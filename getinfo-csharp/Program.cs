@@ -48,6 +48,7 @@ namespace getinfo_csharp
 			catch (HttpRequestException)
 			{
 				Console.WriteLine($"XML request for \"{xmlUrl}\" HTTP error");
+				Console.ReadLine();
 				Environment.Exit(1);
 				throw new HttpRequestException();
 			}
@@ -242,6 +243,7 @@ namespace getinfo_csharp
 				catch (HttpRequestException)
 				{
 					Console.WriteLine("Giving up, try diagnose network and rerun later");
+					Console.ReadLine();
 					Environment.Exit(1);
 					throw new HttpRequestException();
 				}
