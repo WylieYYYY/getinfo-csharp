@@ -22,9 +22,8 @@ Getinfo CSharp is a supplement for `getinfo.py` in [HK Service Map](https://gitl
 1. Download the zipped binaries from the [pipeline](https://gitlab.com/WylieYYYY/getinfo-csharp/-/jobs/artifacts/master/download?job=build-exe) when the pipeline status indicator above is green and show `passed`
    - If it is `running`, wait for a few minute and check later.
    - If it is `failed`, go to the [pipeline list](https://gitlab.com/WylieYYYY/getinfo-csharp/pipelines) and search the first ticked pipeline from the top, click the download button at right-hand side and select `Download build-exe artifacts` to download.
-2. Create a directory at the root of `HK Service Map`, this will be referred to `publish` directory.
-3. Put the downloaded `artifacts.zip` into the `publish` directory and extract there.
-4. Continue to the `On the target device for generation` section.
+2. Put the `publish` directory in `artifacts.zip` at the root of `HK Service Map`
+3. Continue to the `On the target device for generation` section.
 
 #### On the target device for generation:
 1. Check that no files in `publish` directory is at the root of `HK Service Map`
