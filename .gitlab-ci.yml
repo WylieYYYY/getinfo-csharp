@@ -6,7 +6,7 @@ stages:
 build-exe:
     stage: build
     script:
-        - dotnet -c release -r win-x64
+        - dotnet publish -c release -r win-x64
     artifacts:
         paths:
             - "getinfo-csharp/bin/Release/netcoreapp*/win-x64/publish/*"
