@@ -1,4 +1,5 @@
 # Getinfo CSharp
+[![pipeline status](https://gitlab.com/WylieYYYY/getinfo-csharp/badges/master/pipeline.svg)](https://gitlab.com/WylieYYYY/getinfo-csharp/commits/master)  
 Getinfo CSharp is a supplement for `getinfo.py` in [HK Service Map](https://gitlab.com/WylieYYYY/hk-service-map). Use this when the target device for generating `unitinfo.js` is not permitted to install Python interpreter for the default `getinfo.py` due to administrative right.
 ### Features:
 - Written in .NET Core 3.1, can be compiled for major platforms;
