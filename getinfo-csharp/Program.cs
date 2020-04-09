@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -21,6 +20,12 @@ namespace getinfo_csharp
 			string serviceUrl = Console.ReadLine();
 			string executablePath = Path.GetDirectoryName(System.Reflection.Assembly.GetEntryAssembly().Location);
 			Dictionary<string, string> overrideTable = GetOverrideTable(ref serviceUrl, executablePath);
+			if (serviceUrl.ToLower() == "amend")
+			{
+				await Amender.AmendUnitInfo(overrideTable, executablePath);
+				Console.ReadLine();
+				return;
+			}
 			Console.WriteLine("XML request sent");
 			XDocument serviceRoot = await RequestServiceXml(serviceUrl);
 			XNamespace xmlnsUrl = Regex.Match(serviceRoot.Document.Root.Name.ToString(),
@@ -221,10 +226,10 @@ namespace getinfo_csharp
 		}
 
 		// for finishing time estimation
-		private static Pacer estimatePacer;
+		public static Pacer estimatePacer;
 		private static readonly Random random = new Random();
 		// process longitude and latitude from XML response
-		private static async Task<(string, string, XDocument, float, float)> LonglatProcess(string requestUrl)
+		public static async Task<(string, string, XDocument, float, float)> LonglatProcess(string requestUrl)
 		{
 			string address = HttpUtility.UrlDecode(requestUrl.Split("&q=")[1].Split("&i=")[0]);
 			string response;
@@ -303,27 +308,9 @@ namespace getinfo_csharp
 			}
 			Console.WriteLine($"Query ratio is {ratio.Item1}:{ratio.Item2}");
 			overrideStream.Close();
-			Console.WriteLine("Requesting override table");
-			requestGen = overrideTable.Where(
-				kv => kv.Value.Split('\t')[0] != "[NO OVERRIDE]")
-				.Select(kv => lookupUrl + HttpUtility.UrlEncode(
-				overrideTable[kv.Key].Split('\t')[0]) + "&i=" + HttpUtility.UrlEncode(kv.Key));
-			Dictionary<string, Tuple<float, float>> longlatOverrideTable =
-				new Dictionary<string, Tuple<float, float>>();
-			estimatePacer.Restart(requestGen.Count());
-			for (int batchStart = 0; batchStart < requestGen.Count(); batchStart += 50)
-			{
-				taskResponse = requestGen.Skip(batchStart).Take(50).Select(s => LonglatProcess(s)).ToArray();
-				await Task.WhenAll(taskResponse);
-				foreach ((string requestUrl, _, _, float lon, float lat) in taskResponse.Select(t => t.Result))
-				{
-					string nameKey = HttpUtility.UrlDecode(requestUrl.Split("&i=")[1]);
-					string[] offset = overrideTable[nameKey].Split('\t').Skip(1).Take(2).ToArray();
-					longlatOverrideTable.Add(nameKey + "\tLongLat", new Tuple<float, float>(
-						lon + float.Parse(offset[0]), lat + float.Parse(offset[1])));
-				}
-			}
-			estimatePacer.Stop();
+
+			(Dictionary<string, Tuple<float, float>> longlatOverrideTable, _) = await Amender.RequestOverrideLonglat(overrideTable);
+
 			Console.WriteLine("Applying override table");
 			List<Dictionary<string, string>> unitDictList = new List<Dictionary<string, string>>();
 			foreach (XElement unit in root.Descendants(xmlnsUrl + "serviceUnit"))
@@ -340,43 +327,14 @@ namespace getinfo_csharp
 				// define None for default address override
 				unitDictList[index].Add("addressOverride", "");
 				string nameKey = unitDictList[index]["nameTChinese"].ToUpper();
-				if (longlatOverrideTable.ContainsKey(nameKey + "\tLongLat"))
+				if (longlatOverrideTable.ContainsKey(nameKey))
 				{
-					longlatList[index] = longlatOverrideTable[nameKey + "\tLongLat"];
+					longlatList[index] = longlatOverrideTable[nameKey];
 					unitDictList[index]["addressOverride"] = overrideTable[nameKey].Split('\t')[0];
 				}
 			}
-			Console.WriteLine("Reordering data by decreasing latitude");
-			IEnumerable<(int, Tuple<float, float>)> zip = Enumerable.Range(0, longlatList.Length).Zip(longlatList);
-			zip = zip.OrderByDescending(kv => kv.Item2.Item2);
-			int[] latUnitMap = zip.Select(kv => kv.Item1).ToArray();
-			longlatList = zip.Select(kv => kv.Item2).ToArray();
-			// uses JS to avoid CORS
-			Console.WriteLine("Writing langlat and dumping XML as JS to unitinfo.js");
-			using (StreamWriter stream = new StreamWriter(executablePath +
-				"/../scripts/unitinfo.js", false, Encoding.UTF8))
-			{
-				stream.Write("var longlat = [");
-				bool firstWrite = true;
-				foreach (Tuple<float, float> longlat in longlatList)
-				{
-					if (!firstWrite) stream.Write(',');
-					stream.Write($"[{longlat.Item1},{longlat.Item2}]");
-					firstWrite = false;
-				}
-				stream.Write("];\nvar unitinfo = [[");
-				stream.Write(string.Join(',', unitDictList[0].Keys.Select(k => $"\"{k}\"")));
-				stream.Write(']');
-				foreach (int latIndex in latUnitMap)
-				{
-					stream.Write(",[");
-					stream.Write(string.Join(',', unitDictList[latIndex]
-						.Values.Select(v => v == ""? "null" : $"\"{v}\"")));
-					stream.Write(']');
-				}
-				stream.Write("];");
-			}
-			Console.WriteLine("Finished unitinfo.js");
+			Amender.PatchUnitInfo(longlatList, unitDictList[0].Keys,
+				unitDictList.Select(d => d.Values.ToArray()).ToArray(), executablePath);
 		}
 	}
 }

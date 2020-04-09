@@ -6,6 +6,7 @@ Getinfo CSharp is a supplement for `getinfo.py` in [HK Service Map](https://gitl
 - Executable is compiled so no installation is required on target device for `unitinfo.js` generation;
 - Using asynchronised batch request, has the same speed as `getinfo.py`;
 - Has the same interface as `getinfo.py`;
+- Extra `amend` function for amending overrides to the map quickly;
 
 ### Setup
 #### On any desktop device with administrative right:
@@ -32,6 +33,11 @@ Getinfo CSharp is a supplement for `getinfo.py` in [HK Service Map](https://gitl
 4. The same interface as `getinfo.py` will appear and is used the same way.
 
 > Remove `publish` directory before starting a public server
+
+### Amend function
+After generating `unitinfo.js`, if changes are made to the `override.csv`, `amend` function can help to apply changes quickly without requesting all geospatial information again.
+
+Just enter `amend` when prompted to provide an URL, all entries in `override.csv` must already exist in `unitinfo.js` for `amend` to work.
 
 ### Remarks
 `getinfo.py` and this repository's code is a bit unorganised and will be cleaned up later. Hope you don't mind for the time being. :)
