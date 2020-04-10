@@ -60,6 +60,7 @@ namespace getinfo_csharp
 		}
 
 		// create or read address override table
+		public static int batchSize = 50;
 		private static Dictionary<string, string> GetOverrideTable(ref string xmlUrl,
 			string executablePath)
 		{
@@ -72,6 +73,7 @@ namespace getinfo_csharp
 				{
 					string[] fields = stream.ReadLine().Split('\t');
 					if (fields[0] == "xml_url" && xmlUrl == "") xmlUrl = fields[1].TrimEnd();
+					if (fields[0] == "batch_size") batchSize = int.Parse(fields[1].TrimEnd());
 					// ignore any entry key with lowercase character and empty line
 					if (fields[0].Any(char.IsLower) || fields[0] == "") continue;
 					table.Add(fields[0], string.Join('\t', fields.Skip(1).Select(s => s.Trim())));
@@ -280,9 +282,9 @@ namespace getinfo_csharp
 			StreamWriter overrideStream = new StreamWriter(executablePath + "/../override.csv", true, Encoding.UTF8);
 			estimatePacer = new Pacer(parsedIndex.Length);
 			Task<(string, string, XDocument, float, float)>[] taskResponse;
-			for (int batchStart = 0; batchStart < parsedIndex.Length; batchStart += 50)
+			for (int batchStart = 0; batchStart < parsedIndex.Length; batchStart += batchSize)
 			{
-				taskResponse = requestGen.Skip(batchStart).Take(50).Select(s => LonglatProcess(s)).ToArray();
+				taskResponse = requestGen.Skip(batchStart).Take(batchSize).Select(s => LonglatProcess(s)).ToArray();
 				await Task.WhenAll(taskResponse);
 				foreach ((string requestUrl, string address, XDocument longlatRoot,
 					float lon, float lat) in taskResponse.Select(t => t.Result))

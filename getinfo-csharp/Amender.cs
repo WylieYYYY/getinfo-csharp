@@ -59,9 +59,10 @@ namespace getinfo_csharp
 			Dictionary<string, string> addressTable = new Dictionary<string, string>();
 			Program.estimatePacer = new Pacer(requestGen.Count());
 			Task<(string, string, XDocument, float, float)>[] taskResponse;
-			for (int batchStart = 0; batchStart < requestGen.Count(); batchStart += 50)
+			for (int batchStart = 0; batchStart < requestGen.Count(); batchStart += Program.batchSize)
 			{
-				taskResponse = requestGen.Skip(batchStart).Take(50).Select(s => Program.LonglatProcess(s)).ToArray();
+				taskResponse = requestGen.Skip(batchStart).Take(Program.batchSize)
+					.Select(s => Program.LonglatProcess(s)).ToArray();
 				await Task.WhenAll(taskResponse);
 				foreach ((string requestUrl, _, _, float lon, float lat) in taskResponse.Select(t => t.Result))
 				{
