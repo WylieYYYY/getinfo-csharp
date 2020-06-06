@@ -17,15 +17,6 @@ namespace getinfo_csharp
 			if (currentIndex == totalCount) throw new Exception("Pacer stepped out of bound.");
 			return ((float)totalCount / (++currentIndex) - 1) * stopwatch.Elapsed;
 		}
-		public void Stop()
-		{
-			stopwatch.Stop();
-		}
-		public void Restart(int totalCount)
-		{
-			this.totalCount = totalCount;
-			currentIndex = 0;
-			stopwatch.Restart();
-		}
+		public void Stop() { stopwatch.Stop(); }
 	}
 }

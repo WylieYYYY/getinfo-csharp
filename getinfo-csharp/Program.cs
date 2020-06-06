@@ -36,7 +36,7 @@ namespace getinfo_csharp
 			Console.WriteLine("Requesting for geospatial information");
 			await BatchReq(resultList.Item1, resultList.Item2, serviceRoot,
 				xmlnsUrl, resultList.Item3, overrideTable, executablePath);
-			Console.WriteLine("Succesfully execute getinfo");
+			Console.WriteLine("Executed getinfo succesfully");
 			Console.ReadLine();
 		}
 		
@@ -227,46 +227,6 @@ namespace getinfo_csharp
 				new Tuple<int, int>(parsedAddress.Count, unparsedCount));
 		}
 
-		// for finishing time estimation
-		public static Pacer estimatePacer;
-		private static readonly Random random = new Random();
-		// process longitude and latitude from XML response
-		public static async Task<(string, string, XDocument, float, float)> LonglatProcess(string requestUrl)
-		{
-			string address = HttpUtility.UrlDecode(requestUrl.Split("&q=")[1].Split("&i=")[0]);
-			string response;
-			try
-			{
-				response = await client.GetStringAsync(requestUrl);
-			}
-			// recovery prompt
-			catch (HttpRequestException)
-			{
-				Console.WriteLine("Request failed for " + address + ", trying again");
-				try
-				{
-					response = await client.GetStringAsync(requestUrl);
-				}
-				catch (HttpRequestException)
-				{
-					Console.WriteLine("Giving up, try diagnose network and rerun later");
-					Console.ReadLine();
-					Environment.Exit(1);
-					throw new HttpRequestException();
-				}
-			}
-			Console.WriteLine("Got response for " + address);
-			Console.WriteLine("[Estimated time left: " + estimatePacer.Step().ToString() + ']');
-			// traverse into the tree
-			XDocument longlatRoot = XDocument.Parse(response);
-			float lon = float.Parse(longlatRoot.Descendants("Longitude").First().Value);
-			float lat = float.Parse(longlatRoot.Descendants("Latitude").First().Value);
-			// distort slightly to reduce the chance of overlap
-			lon += random.Next(-50, 50) / 1000000;
-			lat += random.Next(-50, 50) / 1000000;
-			return (requestUrl, address, longlatRoot, lon, lat);
-		}
-
 		// take in valid address list and perform API request
 		private static async Task BatchReq(int[] parsedIndex, string[] parsedAddress, XDocument root,
 			XNamespace xmlnsUrl, Tuple<int, int> ratio, Dictionary<string, string> overrideTable, string executablePath)
@@ -280,32 +240,33 @@ namespace getinfo_csharp
 			IEnumerable<string> requestGen = parsedAddress.Select((s, i) =>
 				lookupUrl + HttpUtility.UrlEncode(s) + "&i=" + parsedIndex[i]);
 			StreamWriter overrideStream = new StreamWriter(executablePath + "/../override.csv", true, Encoding.UTF8);
-			estimatePacer = new Pacer(parsedIndex.Length);
-			Task<(string, string, XDocument, float, float)>[] taskResponse;
+			Pacer estimatePacer = new Pacer(parsedIndex.Length);
+			Task<GeoInfo>[] taskResponse;
 			for (int batchStart = 0; batchStart < parsedIndex.Length; batchStart += batchSize)
 			{
-				taskResponse = requestGen.Skip(batchStart).Take(batchSize).Select(s => LonglatProcess(s)).ToArray();
+				taskResponse = requestGen.Skip(batchStart).Take(batchSize)
+					.Select(s => GeoInfo.FromUrl(s, estimatePacer)).ToArray();
 				await Task.WhenAll(taskResponse);
-				foreach ((string requestUrl, string address, XDocument longlatRoot,
-					float lon, float lat) in taskResponse.Select(t => t.Result))
+				estimatePacer.Stop();
+				foreach (GeoInfo response in taskResponse.Select(t => t.Result))
 				{
 					// check district correctness
-					int unitIndex = int.Parse(requestUrl.Split("&i=")[1]);
+					int unitIndex = int.Parse(response.requestKey);
 					XElement targetUnit = unitList[unitIndex];
 					string parsedDistrict = targetUnit.Descendants(xmlnsUrl + "districtEnglish").First().Value;
 					parsedDistrict = parsedDistrict.ToUpper().Replace(" AND ", " & ");
-					string longlatDistrict = longlatRoot.Descendants("DcDistrict").First().Value;
+					string longlatDistrict = response.root.Descendants("DcDistrict").First().Value;
 					string name = targetUnit.Descendants(xmlnsUrl + "nameTChinese").First().Value.ToUpper();
 					// append to override table if district test failed and no entry exists
 					if (!longlatDistrict.Contains(parsedDistrict) && !overrideTable.ContainsKey(name))
 					{
-						Console.WriteLine("District test failed for " + address);
+						Console.WriteLine("District test failed for " + response.address);
 						string tcaddress = targetUnit.Descendants(xmlnsUrl + "addressTChinese").First().Value;
 						overrideStream.Write($"\n{name}\t[NO OVERRIDE]\t0\t0\t{tcaddress}");
 						ratio = new Tuple<int, int>(ratio.Item1 - 1, ratio.Item2 + 1);
 						continue;
 					}
-					longlatList[unitIndex] = new Tuple<float, float>(lon, lat);
+					longlatList[unitIndex] = response.longlat;
 				}
 			}
 			Console.WriteLine($"Query ratio is {ratio.Item1}:{ratio.Item2}");

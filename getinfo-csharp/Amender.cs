@@ -57,23 +57,24 @@ namespace getinfo_csharp
 			Dictionary<string, Tuple<float, float>> longlatOverrideTable =
 				new Dictionary<string, Tuple<float, float>>();
 			Dictionary<string, string> addressTable = new Dictionary<string, string>();
-			Program.estimatePacer = new Pacer(requestGen.Count());
-			Task<(string, string, XDocument, float, float)>[] taskResponse;
+			Pacer estimatePacer = new Pacer(requestGen.Count());
+			Task<GeoInfo>[] taskResponse;
 			for (int batchStart = 0; batchStart < requestGen.Count(); batchStart += Program.batchSize)
 			{
 				taskResponse = requestGen.Skip(batchStart).Take(Program.batchSize)
-					.Select(s => Program.LonglatProcess(s)).ToArray();
+					.Select(s => GeoInfo.FromUrl(s, estimatePacer)).ToArray();
 				await Task.WhenAll(taskResponse);
-				foreach ((string requestUrl, _, _, float lon, float lat) in taskResponse.Select(t => t.Result))
+				foreach (GeoInfo response in taskResponse.Select(t => t.Result))
 				{
-					string nameKey = HttpUtility.UrlDecode(requestUrl.Split("&i=")[1]);
+					string nameKey = HttpUtility.UrlDecode(response.requestKey);
 					string[] offset = overrideTable[nameKey].Split('\t').Skip(1).Take(2).ToArray();
 					longlatOverrideTable.Add(nameKey, new Tuple<float, float>(
-						lon + float.Parse(offset[0]), lat + float.Parse(offset[1])));
-					addressTable.Add(nameKey, HttpUtility.UrlDecode(requestUrl.Split("&i")[0].Split("&q=")[1]));
+						response.longlat.Item1 + float.Parse(offset[0]),
+						response.longlat.Item2 + float.Parse(offset[1])));
+					addressTable.Add(nameKey, response.address);
 				}
 			}
-			Program.estimatePacer.Stop();
+			estimatePacer.Stop();
 			return (longlatOverrideTable, addressTable);
 		}
 

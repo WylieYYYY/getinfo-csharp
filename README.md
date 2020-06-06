@@ -15,7 +15,7 @@ Getinfo CSharp is a supplement for `getinfo.py` in [HK Service Map](https://gitl
 3. Open terminal in repository directory containing `getinfo.csproj`
 4. Execute `dotnet publish -c release -r [Platform RID] --self-contained` to compile ([RID catalog](https://docs.microsoft.com/en-us/dotnet/core/rid-catalog), `--self-contained` is required for compiling tranferrable executable)
 5. When compilation is finished successfully, subdirectory `getinfo-csharp/bin/release/netcoreapp3.1` should exist.
-6. In `getinfo-csharp/bin/release/netcoreapp3.1`, move the directory `[Platform RID]/publish` to the root of `HK Service Map`
+6. In `getinfo-csharp/bin/release/netcoreapp3.1/[Platform RID]`, move the directory `publish` to the root of `HK Service Map`
 7. And now, the directory `publish` can be renamed to something meaningful, and the whole of `HK Service Map` can be transferred to the target device for generation.
 8. Continue to the `On the target device for generation` section.
 
