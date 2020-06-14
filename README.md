@@ -1,6 +1,6 @@
 # Getinfo CSharp
 [![pipeline status](https://gitlab.com/WylieYYYY/getinfo-csharp/badges/master/pipeline.svg)](https://gitlab.com/WylieYYYY/getinfo-csharp/commits/master)  
-Getinfo CSharp is a supplement for `getinfo.py` in [HK Service Map](https://gitlab.com/WylieYYYY/hk-service-map). Use this when the target device for generating `unitinfo.js` is not permitted to install Python interpreter for the default `getinfo.py` due to administrative right.
+Getinfo CSharp is a replacement for `getinfo.py` in [HK Service Map](https://gitlab.com/WylieYYYY/hk-service-map). Use this when the target device for generating `unitinfo.js` is not permitted to install Python interpreter for the default `getinfo.py` due to administrative right.
 ### Features:
 - Written in .NET Core 3.1, can be compiled for major platforms;
 - Executable is compiled so no installation is required on target device for `unitinfo.js` generation;
@@ -16,20 +16,18 @@ Getinfo CSharp is a supplement for `getinfo.py` in [HK Service Map](https://gitl
 4. Execute `dotnet publish -c release -r [Platform RID] --self-contained` to compile ([RID catalog](https://docs.microsoft.com/en-us/dotnet/core/rid-catalog), `--self-contained` is required for compiling tranferrable executable)
 5. When compilation is finished successfully, subdirectory `getinfo-csharp/bin/release/netcoreapp3.1` should exist.
 6. In `getinfo-csharp/bin/release/netcoreapp3.1/[Platform RID]`, move the directory `publish` to the root of `HK Service Map`
-7. And now, the directory `publish` can be renamed to something meaningful, and the whole of `HK Service Map` can be transferred to the target device for generation.
+7. The whole of `HK Service Map` can be transferred to the target device for generation.
 8. Continue to the `On the target device for generation` section.
 
 #### Alternatively, using pre-built binaries directly on the target device for generation:
-1. Download the zipped binaries from the [pipeline](https://gitlab.com/WylieYYYY/getinfo-csharp/-/jobs/artifacts/master/download?job=build-exe) when the pipeline status indicator above is green and show `passed`
-   - If it is `running`, wait for a few minute and check later.
-   - If it is `failed`, go to the [pipeline list](https://gitlab.com/WylieYYYY/getinfo-csharp/pipelines) and search the first ticked pipeline from the top, click the download button at right-hand side and select `Download build-exe artifacts` to download.
-2. Put the `publish` directory in `artifacts.zip` at the root of `HK Service Map`
+1. Download the zipped binaries from the [pipeline](https://gitlab.com/WylieYYYY/getinfo-csharp/-/jobs/artifacts/master/download?job=build-exe) when the pipeline status indicator above is green and show `passed`. If it is `running` or `failed`, go to the [pipeline list](https://gitlab.com/WylieYYYY/getinfo-csharp/pipelines) and search the first ticked pipeline from the top, click the download button at right-hand side and select `Download build-exe artifacts` to download.
+2. Put the extracted directory in `artifacts.zip` at the root of `HK Service Map`
 3. Continue to the `On the target device for generation` section.
 
 #### On the target device for generation:
-1. Check that no files in `publish` directory is at the root of `HK Service Map`
-2. In the directory originally named `publish`, locate an executable named `getinfo` (with `.exe` if in Microsoft Windows)
-3. Execute in terminal using `./getinfo` (`chmod +x` might be needed in Linux, double clicking the file also works in Microsoft Windows)
+1. Check that no files in this repository is at the root of `HK Service Map`
+2. In the directory originally named `publish`, locate an executable named `getinfo-csharp` (with `.exe` if in Microsoft Windows)
+3. Execute in terminal using `./getinfo-csharp` (`chmod +x` might be needed in Linux, double clicking the file also works in Microsoft Windows)
 4. The same interface as `getinfo.py` will appear and is used the same way.
 
 > Remove `publish` directory before starting a public server
