@@ -17,25 +17,20 @@ Getinfo CSharp is a replacement for `getinfo.py` in [HK Service Map](https://git
 5. When compilation is finished successfully, subdirectory `getinfo-csharp/bin/release/netcoreapp3.1` should exist.
 6. In `getinfo-csharp/bin/release/netcoreapp3.1/[Platform RID]`, move the directory `publish` to the root of `HK Service Map`
 7. The whole of `HK Service Map` can be transferred to the target device for generation.
-8. Continue to the `On the target device for generation` section.
+8. Check that no files in this repository is at the root of `HK Service Map`
+9. In directory `publish`, locate an executable named `getinfo-csharp` (with `.exe` if in Microsoft Windows)
+10. Execute in terminal using `./getinfo-csharp` (`chmod +x` might be needed in Linux, double clicking the file also works in Microsoft Windows)
+11. The same interface as `getinfo.py` will appear and is used the same way.
 
-#### Alternatively, using pre-built binaries directly on the target device for generation:
+#### Alternatively, using pre-built binaries for Windows directly on the target device for generation:
 1. Download the zipped binaries from the [pipeline](https://gitlab.com/WylieYYYY/getinfo-csharp/-/jobs/artifacts/master/download?job=build-exe) when the pipeline status indicator above is green and show `passed`. If it is `running` or `failed`, go to the [pipeline list](https://gitlab.com/WylieYYYY/getinfo-csharp/pipelines) and search the first ticked pipeline from the top, click the download button at right-hand side and select `Download build-exe artifacts` to download.
-2. Put the extracted directory in `artifacts.zip` at the root of `HK Service Map`
-3. Continue to the `On the target device for generation` section.
-
-#### On the target device for generation:
-1. Check that no files in this repository is at the root of `HK Service Map`
-2. In the directory originally named `publish`, locate an executable named `getinfo-csharp` (with `.exe` if in Microsoft Windows)
-3. Execute in terminal using `./getinfo-csharp` (`chmod +x` might be needed in Linux, double clicking the file also works in Microsoft Windows)
+2. Extract `artifacts.zip`
+3. Execute `HK Service Map/getinfo/getinfo-csharp.exe` by double clicking.
 4. The same interface as `getinfo.py` will appear and is used the same way.
 
-> Remove `publish` directory before starting a public server
+> Remove `publish` or `getinfo` directory additionally before starting a public server
 
 ### Amend function
 After generating `unitinfo.js`, if changes are made to the `override.csv`, `amend` function can help to apply changes quickly without requesting all geospatial information again.
 
 Just enter `amend` when prompted to provide an URL, all entries in `override.csv` must already exist in `unitinfo.js` for `amend` to work.
-
-### Remarks
-`getinfo.py` and this repository's code is a bit unorganised and will be cleaned up later. Hope you don't mind for the time being. :)
