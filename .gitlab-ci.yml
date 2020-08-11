@@ -3,7 +3,7 @@ image: mcr.microsoft.com/dotnet/core/sdk:latest
 stages:
     - build
 
-build-exe:
+build:
     stage: build
     script:
         - dotnet publish -c release -r win-x64 --self-contained
