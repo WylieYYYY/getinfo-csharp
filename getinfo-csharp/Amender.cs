@@ -93,6 +93,7 @@ namespace getinfo_csharp
 			foreach (KeyValuePair<string, Tuple<float, float>> kv in longlatOverrideTable)
 			{
 				int unitIndex = Array.IndexOf(nameKeyList, kv.Key);
+				if (unitIndex == -1) continue;
 				longlatList[unitIndex] = kv.Value;
 				unitList[unitIndex][addressKeyIndex] = addressTable[kv.Key];
 			}
@@ -127,7 +128,7 @@ namespace getinfo_csharp
 				{
 					stream.Write(",[");
 					stream.Write(string.Join(',', unitList[latIndex]
-						.Select(v => v == "" || v == null ? "null" : $"\"{v}\"")));
+						.Select(v => v == "" || v == null ? "null" : $"\"{v.Replace("\"", "")}\"")));
 					stream.Write(']');
 				}
 				stream.Write("];");
