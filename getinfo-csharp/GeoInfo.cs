@@ -33,7 +33,6 @@ namespace getinfo_csharp
 				{
 					Console.WriteLine("Giving up, try diagnose network and rerun later");
 					Console.ReadLine();
-					Environment.Exit(1);
 					// add exception to indicate end of branch
 					throw new HttpRequestException();
 				}

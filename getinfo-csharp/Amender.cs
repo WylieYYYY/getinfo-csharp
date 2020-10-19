@@ -104,7 +104,8 @@ namespace getinfo_csharp
 			string[][] unitList, string executablePath)
 		{
 			Console.WriteLine("Reordering data by decreasing latitude");
-			IEnumerable<(int, Tuple<float, float>)> zip = Enumerable.Range(0, longlatList.Length).Zip(longlatList);
+			IEnumerable<(int, Tuple<float, float>)> zip = Enumerable.Range(0, longlatList.Length).Zip(longlatList,
+				(index, longlat) => (index, longlat));
 			zip = zip.OrderByDescending(kv => kv.Item2.Item2);
 			int[] latUnitMap = zip.Select(kv => kv.Item1).ToArray();
 			longlatList = zip.Select(kv => kv.Item2).ToArray();
