@@ -1,3 +1,4 @@
 .vs
 getinfo-csharp/bin
 getinfo-csharp/obj
+public/blazor

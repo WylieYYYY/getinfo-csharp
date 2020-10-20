@@ -1,0 +1,35 @@
+@inject IJSRuntime JSRuntime
+
+@using System.IO
+
+@code {
+	private Dictionary<string, StringWriter> fileIndexes = new Dictionary<string, StringWriter>();
+
+	public async Task Import(string ns) {
+		Dictionary<string, string> files =
+			await JSRuntime.InvokeAsync<Dictionary<string, string>>("getStorageFiles", ns);
+		foreach(KeyValuePair<string, string> kv in files) {
+			StringWriter writer = new StringWriter();
+			writer.Write(kv.Value);
+			fileIndexes.Add(kv.Key.Substring(ns.Length + 6), writer);
+		}
+	}
+	public StringWriter GetWriter(params object[] args) {
+		StringWriter writer = new StringWriter();
+		if (fileIndexes.ContainsKey((string)args[0])) {
+			if (args.Length > 1 && args[1].Equals(true)) writer.Write(fileIndexes[(string)args[0]].ToString());
+			fileIndexes[(string)args[0]].Dispose();
+			fileIndexes[(string)args[0]] = writer;
+		} else fileIndexes.Add((string)args[0], writer);
+		return writer;
+	}
+	public StringReader GetReader(params object[] args) {
+		if (!fileIndexes.ContainsKey((string)args[0])) throw new FileNotFoundException();
+		return new StringReader(fileIndexes[(string)args[0]].ToString());
+	}
+	public bool ContainsFile(string filePath) { return fileIndexes.ContainsKey(filePath); }
+	public async Task Export(string ns) {
+		await Task.WhenAll(fileIndexes.Select(kv => JSRuntime.InvokeVoidAsync(
+			"sessionStorage.setItem", $"file:{ns},{kv.Key}", kv.Value.ToString()).AsTask()));
+	}
+}

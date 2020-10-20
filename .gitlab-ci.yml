@@ -12,3 +12,15 @@ build:
     artifacts:
         paths:
             - "hk-service-map/*"
+    except:
+        - pages
+
+pages:
+    stage: build
+    script:
+        - ./demopatch.sh
+    artifacts:
+        paths:
+            - public
+    only:
+        - pages

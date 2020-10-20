@@ -1,0 +1,111 @@
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Getinfo CSharp Demo</title>
+    <link rel="shortcut icon" type="image/png" href="favicon.png"/>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"/>
+    <style>
+      form {
+        margin: 0;
+      }
+      label {
+        width: 10em;
+      }
+    </style>
+    <script>
+      function toggleFileOutput(hasOutput, namespace) {
+        const outputBox = document.getElementById('outputBox');
+        const outputContent = document.getElementById('outputContent');
+        if (hasOutput) {
+          outputBox.classList.replace('bg-danger', 'bg-success');
+          outputContent.innerHTML = '';
+          for (let i = 0; i < sessionStorage.length; i++) {
+            const key = sessionStorage.key(i);
+            if (!key.startsWith(`file:${namespace},`)) continue;
+            const bom = key.split('/').pop() === 'override.csv'?
+                new Uint8Array([0xEF, 0xBB, 0xBF]) : '';
+            const mime = key.split('/').pop() === 'override.csv'?
+                'text/csv' : 'text/javascript'
+            const blob = new Blob([
+              bom, sessionStorage.getItem(key)
+            ], {type: mime + ';charset=utf-8'});
+            outputContent.innerHTML += `
+              <div>
+                <label>${key.split('/').pop()}:</label>
+                <a href="${URL.createObjectURL(blob)}"
+                    download="${key.split('/').pop()}" class="text-dark">
+                  <b>Download File</b>
+                </a>
+              </div>`;
+          }
+          return;
+        }
+        outputBox.classList.replace('bg-success', 'bg-danger');
+        outputContent.innerHTML = 'Files will appear here once ' +
+            'the demo finishes without error.';
+      }
+      function resetDemo() {
+        document.getElementById('frame').src += '';
+        toggleFileOutput(false, null);
+      }
+      function handleInput(element) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          sessionStorage.setItem('file:getinfo-csharp,' +
+              element.name, e.target.result);
+          document.getElementById('frame').src += '';
+        };
+        reader.readAsText(element.files[0]);
+      }
+      function removeFile(fileSessionName, form) {
+        sessionStorage.removeItem(fileSessionName);
+        document.getElementById('frame').src += '';
+        if (form !== null) form.reset();
+      }
+    </script>
+  </head>
+  <body style="background-color: black;">
+    <div class="jumbotron text-light bg-secondary m-3 p-3">
+      <h3>
+        File Input (Optional)
+        <a href=".." class="btn btn-info" style="float: right;">Back to projects page</a>
+      </h3>
+      <p>For more detail, see project page.</p>
+      <form>
+        <label for="override">override.csv:</label>
+        <input type="file" onchange="handleInput(this)" name="/../override.csv" accept=".csv"/>
+        <button onclick="removeFile('file:getinfo-csharp,/../override.csv', this.form)"
+            type="button" class="btn btn-danger btn-sm">
+          Remove
+        </button>
+      </form>
+      <form>
+        <label for="unit info">unitinfo.js:</label>
+        <input type="file" onchange="handleInput(this)" name="/../scripts/unitinfo.js" accept=".js"/>
+        <button onclick="removeFile('file:getinfo-csharp,/../scripts/unitinfo.js', this.form)"
+            type="button" class="btn btn-danger btn-sm">
+          Remove
+        </button>
+      </form>
+    </div>
+    <div class="jumbotron text-light bg-primary m-3 p-3">
+      <h3 style="display: inline;">Virtual Terminal</h3>
+      <button type="button" onclick="resetDemo()"
+          class="btn btn-danger mb-1" style="float: right;">
+        Reload Demo
+      </button>
+      <iframe id="frame" src="blazor/" style="width: 100%; height: 24em;"></iframe>
+    </div>
+    <div id="outputBox" class="jumbotron text-light bg-danger m-3 p-3">
+      <h3>File Output</h3>
+      <p id="outputContent">Files will appear here once the demo finishes without error.</p>
+    </div>
+    <script>
+      if (sessionStorage.getItem('file:hk-service-map,/../override.csv')) {
+        toggleFileOutput(true, 'hk-service-map');
+      }
+      removeFile('file:getinfo-csharp,/../override.csv', null);
+      removeFile('file:getinfo-csharp,/../scripts/unitinfo.js', null);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,34 @@
+@inject IJSRuntime JSRuntime
+
+<div style="width: 100%; height: 100%; background-color: #181818; color: #ecf0f1; font-family: monospace;">
+  <div @ref="textElement" style="height: calc(100% - 2em); padding: .5em; white-space: pre-wrap; overflow-y: scroll;"></div>
+  <span style="width: 2em; margin-left: .5em;">&gt;</span>
+  <input type="text" placeholder="Input Here..." @onkeyup="OnInputKeyUp" @bind="rawInput" disabled="@terminalInDisabled"
+    style="display: inline-block; width: calc(100% - 2.5em); background-color: #181818; color: #ecf0f1; border: none; outline: none;"/>
+</div>
+
+@code {
+	private ElementReference textElement;
+	private string rawInput;
+	private string terminalIn = "\r";
+	protected bool terminalInDisabled = true;
+	private void OnInputKeyUp(KeyboardEventArgs e) {
+		if (e.Key != "Enter") return;
+		terminalIn = rawInput;
+		terminalInDisabled = true;
+		StateHasChanged();
+		TerminalOutWriteLine(rawInput);
+		rawInput = "\r";
+	}
+
+	public void TerminalOutWrite(string str) { JSRuntime.InvokeVoidAsync("updateTerminal", textElement, str); }
+	public void TerminalOutWriteLine(string str) { TerminalOutWrite(str + '\n'); }
+	public async Task<string> WaitTerminalIn() {
+		terminalInDisabled = false;
+		StateHasChanged();
+		while(terminalIn == "\r") await Task.Delay(100);
+		string str = terminalIn;
+		terminalIn = null;
+		return str;
+	}
+}

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+    <title>blazor</title>
+    <base href="/getinfo-csharp/blazor/"/>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"/>
+    <link href="app.css" rel="stylesheet"/>
+    <style>
+      html, body, app {
+        height: 100%;
+      }
+      .terminal {
+        background-color: #181818;
+        color: #ecf0f1;
+        font-family: monospace;
+      }
+    </style>
+    <script>
+      function updateTerminal(element, str) {
+        if (element.scrollHeight - element.scrollTop ===
+            element.clientHeight) {
+          element.innerText += str;
+          element.scrollTop = element.scrollHeight;
+        } else element.innerText += str;
+      }
+      function showError() {
+        document.getElementById('blazor-error-ui').style.display = 'block';
+      }
+      function getStorageFiles(namespace) {
+        const files = {};
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const key = sessionStorage.key(i);
+          if (!key.startsWith(`file:${namespace},`)) continue;
+          files[key] = sessionStorage.getItem(key);
+        }
+        return files;
+      }
+      function toggleFileOutput(hasOutput, namespace) {
+        top.toggleFileOutput(hasOutput, namespace);
+      }
+    </script>
+  </head>
+  <body>
+    <app>
+      <div class="terminal" style="width: 100%; height: 100%;">
+        <div style="height: calc(100% - 2em); padding: .5em; overflow-y: scroll;">Loading...</div>
+        <span style="width: 2em; margin-left: .5em;">&gt;</span>
+        <input type="text" placeholder="Input Here..." class="terminal"
+          style="display: inline-block; width: calc(100% - 2.5em); border: none; outline: none;" disabled/>
+      </div>
+    </app>
+    <span id="blazor-error-ui" class="alert alert-danger"
+        style="position: absolute; top: 0; right: 0; margin: 1em 2em; opacity: 80%;" role="alert">
+      An error has occurred, reload demo to try again.
+    </span>
+    <script src="_framework/blazor.webassembly.js"></script>
+  </body>
+</html>
