@@ -38,11 +38,30 @@
                 </a>
               </div>`;
           }
+          outputContent.innerHTML += `
+            <hr/>
+            <p>
+              You can test unitinfo.js here.
+              To quit the map and return to this page, click the "Reset Demo"
+              button in the bottom right corner on the map screens.
+              No generated file will be lost.
+            </p>
+            <button onclick="gotoServiceMap()" class="btn btn-info">
+              Test unitinfo.js
+            </button>
+          `;
           return;
         }
         outputBox.classList.replace('bg-success', 'bg-danger');
         outputContent.innerHTML = 'Files will appear here once ' +
             'the demo finishes without error.';
+      }
+      function gotoServiceMap() {
+        if (sessionStorage.getItem('var:hk-service-map,useLeaflet') === null) {
+          sessionStorage.setItem('var:hk-service-map,useLeaflet', true);
+        }
+        sessionStorage.setItem('var:,returnPath', '/getinfo-csharp');
+        window.location.href = '../hk-service-map';
       }
       function resetDemo() {
         document.getElementById('frame').src += '';
