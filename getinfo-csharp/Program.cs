@@ -1,13 +1,18 @@
-﻿using System;
+﻿#nullable enable
+
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Numerics;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using System.Web;
 using System.Xml.Linq;
+
+using WylieYYYY.GetinfoCSharp;
+using WylieYYYY.GetinfoCSharp.Net;
 
 namespace getinfo_csharp
 {
@@ -31,16 +36,15 @@ namespace getinfo_csharp
 			XNamespace xmlnsUrl = Regex.Match(serviceRoot.Document.Root.Name.ToString(),
 				@"(?<={)(https?://[^}]*)(?=})").Value;
 			Console.WriteLine("Parsing address");
-			Tuple<int[], string[], Tuple<int, int>> resultList = ParseAddress(serviceRoot, xmlnsUrl,
-				overrideTable, executablePath);
+			(int[], string[], (int, int)) resultList = ParseAddress(serviceRoot, xmlnsUrl, overrideTable, executablePath);
 			Console.WriteLine("Requesting for geospatial information");
 			await BatchReq(resultList.Item1, resultList.Item2, serviceRoot,
 				xmlnsUrl, resultList.Item3, overrideTable, executablePath);
 			Console.WriteLine("Executed getinfo succesfully");
 			Console.ReadLine();
 		}
-		
-		private static readonly HttpClient client = new HttpClient();
+
+		public static readonly HttpClient client = new HttpClient();
 
 		// handle request to the XML service, parse and dump
 		private static async Task<XDocument> RequestServiceXml(string xmlUrl)
@@ -95,7 +99,7 @@ namespace getinfo_csharp
 		}
 
 		// take in XML root with specific tags and parse address
-		private static Tuple<int[], string[], Tuple<int, int>> ParseAddress(XDocument root, XNamespace xmlnsUrl,
+		private static (int[], string[], (int, int)) ParseAddress(XDocument root, XNamespace xmlnsUrl,
 			Dictionary<string, string> overrideTable, string executablePath)
 		{
 			List<int> parsedIndex = new List<int>();
@@ -222,56 +226,58 @@ namespace getinfo_csharp
 			overrideStream.Close();
 			Console.WriteLine($"Parsing ratio is {parsedAddress.Count}:{unparsedCount}");
 			// return all required data for traversing XML
-			return new Tuple<int[], string[], Tuple<int, int>>(parsedIndex.ToArray(), parsedAddress.ToArray(),
-				new Tuple<int, int>(parsedAddress.Count, unparsedCount));
+			return (parsedIndex.ToArray(), parsedAddress.ToArray(), (parsedAddress.Count, unparsedCount));
 		}
 
 		// take in valid address list and perform API request
 		private static async Task BatchReq(int[] parsedIndex, string[] parsedAddress, XDocument root,
-			XNamespace xmlnsUrl, Tuple<int, int> ratio, Dictionary<string, string> overrideTable, string executablePath)
+			XNamespace xmlnsUrl, (int, int) ratio, Dictionary<string, string> overrideTable, string executablePath)
 		{
-			string lookupUrl = "https://www.als.ogcio.gov.hk/lookup?n=1&q=";
 			// allocate full length longlat list
 			XElement[] unitList = root.Descendants(xmlnsUrl + "serviceUnit").ToArray();
-			Tuple<float, float>[] longlatList = new Tuple<float, float>[unitList.Length]
-				.Select(t => new Tuple<float, float>(0, -91)).ToArray();
+			Vector2[] longlatList = new Vector2[unitList.Length].Select(t => new Vector2(0, -91)).ToArray();
 			// encode and request multiple URL simultaneously
-			IEnumerable<string> requestGen = parsedAddress.Select((s, i) =>
-				lookupUrl + HttpUtility.UrlEncode(s) + "&i=" + parsedIndex[i]);
+			IEnumerable<(int, string)> indexAddressPairs = parsedAddress.Select((s, i) => (parsedIndex[i], s));
 			StreamWriter overrideStream = new StreamWriter(executablePath + "/../override.csv", true, Encoding.UTF8);
 			Pacer estimatePacer = new Pacer(parsedIndex.Length);
-			Task<GeoInfo>[] taskResponse;
 			for (int batchStart = 0; batchStart < parsedIndex.Length; batchStart += batchSize)
 			{
-				taskResponse = requestGen.Skip(batchStart).Take(batchSize)
-					.Select(s => GeoInfo.FromUrl(s, estimatePacer)).ToArray();
-				await Task.WhenAll(taskResponse);
-				estimatePacer.Stop();
-				foreach (GeoInfo response in taskResponse.Select(t => t.Result))
+				List<Task<(int, AlsLocationInfo?)>> taskResponse = indexAddressPairs.Skip(batchStart).Take(batchSize)
+						.Select(async kv => (kv.Item1, await AlsLocationInfo.FromAddress(kv.Item2, true, client))).ToList();
+				IAsyncEnumerator<(int, AlsLocationInfo?)> taskEnumerator = taskResponse.UnrollCompletedTasks();
+				while (await taskEnumerator.MoveNextAsync())
 				{
+					(int unitIndex, AlsLocationInfo? locationInfo) = taskEnumerator.Current;
 					// check district correctness
-					int unitIndex = int.Parse(response.requestKey);
+					if (locationInfo == null)
+					{
+						Console.WriteLine($"Request failed for {parsedAddress[unitIndex]}");
+						continue;
+					}
+					Console.WriteLine($"Got response for {locationInfo.SourceAddress}");
+					Console.WriteLine("[Estimated time left: " + estimatePacer.Step().ToString() + ']');
 					XElement targetUnit = unitList[unitIndex];
 					string parsedDistrict = targetUnit.Descendants(xmlnsUrl + "districtEnglish").First().Value;
 					parsedDistrict = parsedDistrict.ToUpper().Replace(" AND ", " & ");
-					string longlatDistrict = response.root.Descendants("DcDistrict").First().Value;
 					string name = targetUnit.Descendants(xmlnsUrl + "nameTChinese").First().Value.ToUpper();
 					// append to override table if district test failed and no entry exists
-					if (!longlatDistrict.Contains(parsedDistrict) && !overrideTable.ContainsKey(name))
+					if ((!locationInfo.District?.Contains(parsedDistrict) ?? false)
+							&& !overrideTable.ContainsKey(name))
 					{
-						Console.WriteLine("District test failed for " + response.address);
+						Console.WriteLine("District test failed for " + locationInfo.SourceAddress);
 						string tcaddress = targetUnit.Descendants(xmlnsUrl + "addressTChinese").First().Value;
 						overrideStream.Write($"\n{name}\t[NO OVERRIDE]\t0\t0\t{tcaddress}");
-						ratio = new Tuple<int, int>(ratio.Item1 - 1, ratio.Item2 + 1);
+						ratio = (ratio.Item1 - 1, ratio.Item2 + 1);
 						continue;
 					}
-					longlatList[unitIndex] = response.longlat;
+					longlatList[unitIndex] = locationInfo.Coordinates;
 				}
 			}
+			estimatePacer.Stop();
 			Console.WriteLine($"Query ratio is {ratio.Item1}:{ratio.Item2}");
 			overrideStream.Close();
 
-			(Dictionary<string, Tuple<float, float>> longlatOverrideTable, _) = await Amender.RequestOverrideLonglat(overrideTable);
+			(Dictionary<string, Vector2> longlatOverrideTable, _) = await Amender.RequestOverrideLonglat(overrideTable);
 
 			Console.WriteLine("Applying override table");
 			List<Dictionary<string, string>> unitDictList = new List<Dictionary<string, string>>();

@@ -2,8 +2,12 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <TargetFramework>net6</TargetFramework>
     <RootNamespace>getinfo_csharp</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="runtime.any.System.Resources.ResourceManager" Version="4.3.0" />
+  </ItemGroup>
 
 </Project>
