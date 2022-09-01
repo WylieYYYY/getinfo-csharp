@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using System.Xml.Linq;
 
 using WylieYYYY.GetinfoCSharp;
+using WylieYYYY.GetinfoCSharp.IO;
 using WylieYYYY.GetinfoCSharp.Net;
 
 namespace getinfo_csharp
@@ -92,7 +93,7 @@ namespace getinfo_csharp
 				stream.WriteLine("See README for usage");
 				stream.WriteLine("[Traditional Chinese Name]\t[Proposed Address]" +
 					"\t[Longtitude Offset]\t[Latitude Offset]\t[Registered Address]");
-				stream.Write("xml_url\t" + xmlUrl);
+				stream.WriteLine("xml_url\t" + xmlUrl);
 				stream.Close();
 			}
 			return table;
@@ -205,9 +206,7 @@ namespace getinfo_csharp
 					string name = unit.Descendants(xmlnsUrl + "nameTChinese").First().Value.ToUpper();
 					string address = unit.Descendants(xmlnsUrl + "addressTChinese").First().Value;
 					if (!overrideTable.ContainsKey(name))
-					{
-						overrideStream.Write($"\n{name}\t[NO OVERRIDE]\t0\t0\t{address}");
-					}
+						overrideStream.WriteLine(new CoordinatesOverrideEntry(name, address));
 					unparsedCount++;
 					Console.WriteLine("Unable to parse " + unit.Descendants(xmlnsUrl +
 						"addressEnglish").First().Value);
@@ -266,7 +265,7 @@ namespace getinfo_csharp
 					{
 						Console.WriteLine("District test failed for " + locationInfo.SourceAddress);
 						string tcaddress = targetUnit.Descendants(xmlnsUrl + "addressTChinese").First().Value;
-						overrideStream.Write($"\n{name}\t[NO OVERRIDE]\t0\t0\t{tcaddress}");
+						overrideStream.WriteLine(new CoordinatesOverrideEntry(name, tcaddress));
 						ratio = (ratio.Item1 - 1, ratio.Item2 + 1);
 						continue;
 					}
@@ -277,7 +276,11 @@ namespace getinfo_csharp
 			Console.WriteLine($"Query ratio is {ratio.Item1}:{ratio.Item2}");
 			overrideStream.Close();
 
-			(Dictionary<string, Vector2> longlatOverrideTable, _) = await Amender.RequestOverrideLonglat(overrideTable);
+			Dictionary<string, Vector2> longlatOverrideTable = new();
+			IAsyncEnumerator<CoordinatesOverrideEntry> overrides =
+					Amender.RequestOverrideLonglat(overrideTable);
+			while (await overrides.MoveNextAsync())
+				longlatOverrideTable.Add(overrides.Current.TraditionalChineseName, (Vector2)overrides.Current.OverridingCoordinates!);
 
 			Console.WriteLine("Applying override table");
 			List<Dictionary<string, string>> unitDictList = new List<Dictionary<string, string>>();
@@ -285,9 +288,7 @@ namespace getinfo_csharp
 			{
 				Dictionary<string, string> propDict = new Dictionary<string, string>();
 				foreach (XElement prop in unit.Descendants())
-				{
 					propDict.Add(prop.Name.LocalName, prop.Value);
-				}
 				unitDictList.Add(propDict);
 			}
 			for (int index = 0; index < unitDictList.Count; index++)

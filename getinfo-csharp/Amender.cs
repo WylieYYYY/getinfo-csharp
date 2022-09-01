@@ -11,6 +11,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 using WylieYYYY.GetinfoCSharp;
+using WylieYYYY.GetinfoCSharp.IO;
 using WylieYYYY.GetinfoCSharp.Net;
 
 namespace getinfo_csharp
@@ -19,16 +20,10 @@ namespace getinfo_csharp
 	{
 		public static async Task AmendUnitInfo(Dictionary<string, string> overrideTable, string executablePath)
 		{
-			JsonElement longlatElement, unitElement;
-			(longlatElement, unitElement) = ParseUnitInfo(executablePath);
-			Dictionary<string, Vector2> longlatOverrideTable;
-			Dictionary<string, string> addressTable;
-			(longlatOverrideTable, addressTable) = await RequestOverrideLonglat(overrideTable);
-			Vector2[] longlatList;
-			IEnumerable<string> unitJsonList = unitElement.EnumerateArray().Skip(1).Select(e => e.GetRawText());
-			string[][] unitList = unitJsonList.Select(s => JsonSerializer.Deserialize<object[]>(s)
-				.Select(o => o?.ToString()).ToArray()).ToArray();
-			longlatList = PatchLists(longlatElement, unitElement, longlatOverrideTable, addressTable, ref unitList);
+			(JsonElement longlatElement, JsonElement unitElement) = ParseUnitInfo(executablePath);
+			IAsyncEnumerator<CoordinatesOverrideEntry> overrides = RequestOverrideLonglat(overrideTable);
+			(Vector2[] longlatList, string?[][] unitList) =
+					await PatchLists(longlatElement, unitElement, overrides);
 			PatchUnitInfo(longlatList, unitElement[0].EnumerateArray()
 				.Select(j => j.GetString()).ToArray(), unitList, executablePath);
 		}
@@ -50,69 +45,74 @@ namespace getinfo_csharp
 			return (JsonDocument.Parse(longlat).RootElement, JsonDocument.Parse(unitinfo).RootElement);
 		}
 
-		public static async Task<(Dictionary<string, Vector2>, Dictionary<string, string>)>RequestOverrideLonglat
-			(Dictionary<string, string> overrideTable)
+		public static async IAsyncEnumerator<CoordinatesOverrideEntry> RequestOverrideLonglat(
+				Dictionary<string, string> overrideTable)
 		{
 			Console.WriteLine("Requesting override table");
-			IEnumerable<KeyValuePair<string, string>> keyAddressPairs = overrideTable
-					.Where(kv => kv.Value.Split('\t')[0] != "[NO OVERRIDE]");
-			Dictionary<string, Vector2> longlatOverrideTable = new();
-			Dictionary<string, string> addressTable = new();
-			for (int batchStart = 0; batchStart <  keyAddressPairs.Count(); batchStart += Program.batchSize)
+			List<CoordinatesOverrideEntry> overrides = overrideTable.Select(
+					p => new CoordinatesOverrideEntry(p.Key, p.Value.Split('\t')[3], p.Value.Split('\t')[0],
+					new Vector2(float.Parse(p.Value.Split('\t')[1]), float.Parse(p.Value.Split('\t')[2])))).ToList();
+			IEnumerator<CoordinatesOverrideEntry> overrideEnumerator = overrides.GetEnumerator();
+			Pacer estimatePacer = new(overrides.Count);
+			List<Task<CoordinatesOverrideEntry>> tasks = new();
+			async IAsyncEnumerator<CoordinatesOverrideEntry> RequestChunk()
 			{
-				List<Task<(string, AlsLocationInfo?)>> taskResponse = keyAddressPairs.Skip(batchStart).Take(Program.batchSize)
-					.Select(async kv => (kv.Key, await AlsLocationInfo.FromAddress(kv.Value, false, Program.client))).ToList();
-				IAsyncEnumerator<(string, AlsLocationInfo?)> taskEnumerator = taskResponse.UnrollCompletedTasks();
-				Pacer estimatePacer = new(taskResponse.Count);
-				while (await taskEnumerator.MoveNextAsync())
+				IAsyncEnumerator<CoordinatesOverrideEntry> chunk = tasks.UnrollCompletedTasks();
+				while (await chunk.MoveNextAsync())
 				{
-					(string tckey, AlsLocationInfo? locationInfo) = taskEnumerator.Current;
-					if (locationInfo == null)
+					if (chunk.Current.ProposedAddress == null)
 					{
-						Console.WriteLine("Request failed for " + tckey);
+						estimatePacer.Step();
 						continue;
 					}
-					string[] offset = overrideTable[tckey].Split('\t').Skip(1).Take(2).ToArray();
-					longlatOverrideTable.Add(tckey, new Vector2(
-						locationInfo.Coordinates.X + float.Parse(offset[0]),
-						locationInfo.Coordinates.Y + float.Parse(offset[1])));
-					addressTable.Add(tckey, locationInfo.SourceAddress);
-					Console.WriteLine("Got response for " + tckey);
-					Console.WriteLine("[Estimated time left: " + estimatePacer.Step().ToString() + ']');
+					if (chunk.Current.OverridingCoordinates == null)
+						Console.WriteLine($"Request failed for {chunk.Current.TraditionalChineseName}");
+					else Console.WriteLine($"Got response for {chunk.Current.TraditionalChineseName}");
+					Console.WriteLine($"[Estimated time left: {estimatePacer.Step().ToString()}]");
+					if (chunk.Current.OverridingCoordinates != null) yield return chunk.Current;
 				}
-				estimatePacer.Stop();
 			}
-			return (longlatOverrideTable, addressTable);
+			while (overrideEnumerator.MoveNext())
+			{
+				tasks.Add(overrideEnumerator.Current.Locate(
+						address => AlsLocationInfo.FromAddress(address, false, Program.client)));
+				if (tasks.Count == Program.batchSize)
+				{
+					IAsyncEnumerator<CoordinatesOverrideEntry> chunk = RequestChunk();
+					while (await chunk.MoveNextAsync()) yield return chunk.Current;
+				}
+			}
+			IAsyncEnumerator<CoordinatesOverrideEntry> lastChunk = RequestChunk();
+			while (await lastChunk.MoveNextAsync()) yield return lastChunk.Current;
+			estimatePacer.Stop();
 		}
 
-		private static Vector2[] PatchLists(JsonElement longlatElement, JsonElement unitElement,
-			Dictionary<string, Vector2> longlatOverrideTable,
-			Dictionary<string, string> addressTable, ref string[][] unitList)
+		private static async Task<(Vector2[], string?[][])> PatchLists(JsonElement longlatElement,
+				JsonElement unitElement, IAsyncEnumerator<CoordinatesOverrideEntry> overrides)
 		{
 			Console.WriteLine("Patching unit info lists");
-			int nameKeyIndex = Array.IndexOf(unitElement[0].EnumerateArray().Select(k => k.GetString()).ToArray(), "nameTChinese");
-			int addressKeyIndex = Array.IndexOf(unitElement[0].EnumerateArray()
-				.Select(k => k.GetString()).ToArray(), "addressOverride");
-			IEnumerable<string> longlatJsonList = longlatElement.EnumerateArray().Select(e => e.GetRawText());
-			IEnumerable<float[]> longlatArrayList = longlatJsonList.Select(s => JsonSerializer.Deserialize<float[]>(s));
+			string?[][] unitList = unitElement.EnumerateArray().Skip(1).Select(e => e.Deserialize<string?[]>()).ToArray();
+			string?[] keys = unitElement[0].Deserialize<string?[]>();
+			int nameKeyIndex = Array.IndexOf(keys, "nameTChinese");
+			int addressKeyIndex = Array.IndexOf(keys, "addressOverride");
+			IEnumerable<float[]> longlatArrayList = longlatElement.EnumerateArray().Select(e => e.Deserialize<float[]>());
 			Vector2[] longlatList = longlatArrayList.Select(l => new Vector2(l[0], l[1])).ToArray();
 			string[] nameKeyList = unitElement.EnumerateArray().Skip(1).Select(u => u[nameKeyIndex].GetString()).ToArray();
-			foreach (KeyValuePair<string, Vector2> kv in longlatOverrideTable)
+			while (await overrides.MoveNextAsync())
 			{
-				int unitIndex = Array.IndexOf(nameKeyList, kv.Key);
+				int unitIndex = Array.IndexOf(nameKeyList, overrides.Current.TraditionalChineseName);
 				if (unitIndex == -1) continue;
-				longlatList[unitIndex] = kv.Value;
-				unitList[unitIndex][addressKeyIndex] = addressTable[kv.Key];
+				longlatList[unitIndex] = (Vector2)overrides.Current.OverridingCoordinates!;
+				unitList[unitIndex][addressKeyIndex] = overrides.Current.ProposedAddress;
 			}
-			return longlatList;
+			return (longlatList, unitList);
 		}
 
 		public static void PatchUnitInfo(Vector2[] longlatList, IEnumerable<string> infoKeyList,
 			string[][] unitList, string executablePath)
 		{
 			Console.WriteLine("Reordering data by decreasing latitude");
-			IEnumerable<(int, Vector2)> zip = Enumerable.Range(0, longlatList.Length).Zip(longlatList,
-				(index, longlat) => (index, longlat));
+			IEnumerable<(int, Vector2)> zip = Enumerable.Range(0, longlatList.Length).Zip(longlatList);
 			zip = zip.OrderByDescending(kv => kv.Item2.Y);
 			int[] latUnitMap = zip.Select(kv => kv.Item1).ToArray();
 			longlatList = zip.Select(kv => kv.Item2).ToArray();
@@ -121,23 +121,14 @@ namespace getinfo_csharp
 			using (StreamWriter stream = new StreamWriter(executablePath +
 				"/../scripts/unitinfo.js", false, Encoding.UTF8))
 			{
-				stream.Write("var longlat = [");
-				bool firstWrite = true;
-				foreach (Vector2 longlat in longlatList)
-				{
-					if (!firstWrite) stream.Write(',');
-					stream.Write($"[{longlat.X},{longlat.Y}]");
-					firstWrite = false;
-				}
-				stream.Write("];\nvar unitinfo = [[");
-				stream.Write(string.Join(',', infoKeyList.Select(k => $"\"{k}\"")));
-				stream.Write(']');
+				stream.Write("var longlat = ");
+				stream.Write(JsonSerializer.Serialize(longlatList.Select(c => new float[] { c.X, c.Y })));
+				stream.Write(";\nvar unitinfo = [");
+				stream.Write(JsonSerializer.Serialize(infoKeyList));
 				foreach (int latIndex in latUnitMap)
 				{
-					stream.Write(",[");
-					stream.Write(string.Join(',', unitList[latIndex]
-						.Select(v => v == "" || v == null ? "null" : $"\"{v.Replace("\"", "")}\"")));
-					stream.Write(']');
+					stream.Write(',');
+					stream.Write(JsonSerializer.Serialize(unitList[latIndex]));
 				}
 				stream.Write("];");
 			}
