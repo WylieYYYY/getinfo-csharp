@@ -283,10 +283,10 @@ namespace getinfo_csharp
 				longlatOverrideTable.Add(overrides.Current.TraditionalChineseName, (Vector2)overrides.Current.OverridingCoordinates!);
 
 			Console.WriteLine("Applying override table");
-			List<Dictionary<string, string>> unitDictList = new List<Dictionary<string, string>>();
+			List<Dictionary<string, string?>> unitDictList = new();
 			foreach (XElement unit in root.Descendants(xmlnsUrl + "serviceUnit"))
 			{
-				Dictionary<string, string> propDict = new Dictionary<string, string>();
+				Dictionary<string, string?> propDict = new();
 				foreach (XElement prop in unit.Descendants())
 					propDict.Add(prop.Name.LocalName, prop.Value);
 				unitDictList.Add(propDict);
@@ -294,7 +294,7 @@ namespace getinfo_csharp
 			for (int index = 0; index < unitDictList.Count; index++)
 			{
 				// define None for default address override
-				unitDictList[index].Add("addressOverride", "");
+				unitDictList[index].Add("addressOverride", null);
 				string nameKey = unitDictList[index]["nameTChinese"].ToUpper();
 				if (longlatOverrideTable.ContainsKey(nameKey))
 				{
@@ -302,8 +302,13 @@ namespace getinfo_csharp
 					unitDictList[index]["addressOverride"] = overrideTable[nameKey].Split('\t')[0];
 				}
 			}
-			Amender.PatchUnitInfo(longlatList, unitDictList[0].Keys,
-				unitDictList.Select(d => d.Values.ToArray()).ToArray(), executablePath);
+			async IAsyncEnumerator<UnitInformationEntry> GetEntries()
+			{
+				foreach ((Vector2 coordinates, Dictionary<string, string?> attributes) in longlatList.Zip(unitDictList))
+					yield return new UnitInformationEntry(attributes, coordinates);
+			}
+			UnitInformationEntry.SharedAttributeKeys = unitDictList[0].Keys.ToArray();
+			await Amender.PatchUnitInfo(GetEntries(), executablePath);
 		}
 	}
 }
