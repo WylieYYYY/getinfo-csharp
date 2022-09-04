@@ -23,14 +23,6 @@ namespace WylieYYYY.GetinfoCSharp.IO
 		public Vector2 Coordinates;
 		/// <summary>Attribute keys of the entry.</summary>
 		public HashSet<string> AttributeKeys => _attributeKeys ??= _attributes.Keys.ToHashSet();
-		/// <summary>
-		///  Identifier for entries to be modified or removed, this identifier may not be unique.
-		/// </summary>
-		/// <remarks>
-		///  This property's type should be kept opaque, calling <see cref="object.ToString"/>
-		///  on this identifier will always give a human readable form.
-		/// </remarks>
-		public readonly object? ChangeIdentifier;
 
 		private readonly Dictionary<string, string?> _attributes;
 		private HashSet<string>? _attributeKeys = null;
@@ -53,7 +45,6 @@ namespace WylieYYYY.GetinfoCSharp.IO
 		{
 			_attributes = attributes;
 			Coordinates = coordinates;
-			ChangeIdentifier = _attributes.GetValueOrDefault("nameTChinese");
 			_isPartial = isPartial;
 		}
 
@@ -66,8 +57,13 @@ namespace WylieYYYY.GetinfoCSharp.IO
 			string? address = this["addressEnglish"];
 			if (address == null) throw new FileFormatException("" /*HACK*/);
 			AlsLocationInfo? locationInfo = await locator(address);
-			Coordinates = locationInfo == null ? MissingCoordinates : locationInfo.Coordinates;
-			// TODO: move district check into this method
+			string? normalizedDistrict = this["districtEnglish"]?.Replace(" AND ", " & ");
+			string? fetchedDistrict = locationInfo?.District;
+			// skip district test if either sources does not have district information
+			bool shouldSkipDistrictCheck = normalizedDistrict == null || fetchedDistrict == null;
+			if (locationInfo == null) return this;
+			if (shouldSkipDistrictCheck || fetchedDistrict!.Contains(normalizedDistrict!))
+				Coordinates = locationInfo.Coordinates;
 			return this;
 		}
 
@@ -96,6 +92,7 @@ namespace WylieYYYY.GetinfoCSharp.IO
 		/// </remarks>
 		/// <param name="other">Other entry to be compared against.</param>
 		/// <returns>Relative order of the objects being compared.</returns>
+		/// <exception cref="ArgumentNullException"/>
 		public int CompareTo(UnitInformationEntry? other)
 		{
 			if (other == null) throw new ArgumentNullException(/*HACK*/);

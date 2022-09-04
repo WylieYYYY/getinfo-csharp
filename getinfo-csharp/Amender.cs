@@ -20,28 +20,40 @@ namespace getinfo_csharp
 	{
 		public static async Task AmendUnitInfo(Dictionary<string, string> overrideTable, string executablePath)
 		{
-			(JsonElement longlatElement, JsonElement unitElement) = ParseUnitInfo(executablePath);
+			IAsyncEnumerator<UnitInformationEntry> unitInformationEntries = ReadUnitInfo(executablePath);
 			IAsyncEnumerator<CoordinatesOverrideEntry> overrides = RequestOverrideLonglat(overrideTable);
-			IAsyncEnumerator<UnitInformationEntry> unitInformationEntry =
-					PatchLists(longlatElement, unitElement, overrides);
-			await PatchUnitInfo(unitInformationEntry, executablePath);
+			IAsyncEnumerator<UnitInformationEntry> patchedUnitInformationEntries =
+					OverrideEntries(unitInformationEntries, overrides);
+			await PatchUnitInfo(patchedUnitInformationEntries, executablePath);
 		}
 
-		private static (JsonElement, JsonElement) ParseUnitInfo(string executablePath)
+		private static async IAsyncEnumerator<UnitInformationEntry> ReadUnitInfo(string executablePath)
 		{
-			string longlat = "", unitinfo = "";
+			string longlatJson = "", unitinfoJson = "";
 			using (StreamReader stream = new StreamReader(executablePath + "/../scripts/unitinfo.js"))
 			{
 				string line;
 				while ((line = stream.ReadLine()) != null)
 				{
 					Match match = Regex.Match(line, @"^var longlat ?= ?(.*);$");
-					if (match.Success) longlat = match.Groups[1].Value;
+					if (match.Success) longlatJson = match.Groups[1].Value;
 					match = Regex.Match(line, @"^var unitinfo ?= ?(.*);$");
-					if (match.Success) unitinfo = match.Groups[1].Value;
+					if (match.Success) unitinfoJson = match.Groups[1].Value;
 				}
 			}
-			return (JsonDocument.Parse(longlat).RootElement, JsonDocument.Parse(unitinfo).RootElement);
+			JsonElement longlatElement = JsonDocument.Parse(longlatJson).RootElement;
+			JsonElement unitinfoElement = JsonDocument.Parse(unitinfoJson).RootElement;
+			UnitInformationEntry.SharedAttributeKeys = unitinfoElement[0].Deserialize<string[]>();
+			IEnumerable<string?[]> unitList = unitinfoElement.EnumerateArray().Skip(1).Select(e => e.Deserialize<string?[]>());
+			IEnumerable<Vector2> longlatList = longlatElement.EnumerateArray()
+					.Select(e => e.Deserialize<float[]>()).Select(l => new Vector2(l[0], l[1]));
+			foreach ((string?[] unitinfo, Vector2 longlat) in unitList.Zip(longlatList))
+			{
+				Dictionary<string, string?> attributes = new();
+				foreach ((string key, string? value) in UnitInformationEntry.SharedAttributeKeys.Zip(unitinfo))
+					attributes.Add(key, value);
+				yield return new UnitInformationEntry(attributes, longlat);
+			}
 		}
 
 		public static async IAsyncEnumerator<CoordinatesOverrideEntry> RequestOverrideLonglat(
@@ -86,34 +98,18 @@ namespace getinfo_csharp
 			estimatePacer.Stop();
 		}
 
-		private static async IAsyncEnumerator<UnitInformationEntry> PatchLists(
-				JsonElement longlatElement, JsonElement unitElement,
+		private static async IAsyncEnumerator<UnitInformationEntry> OverrideEntries(
+				IAsyncEnumerator<UnitInformationEntry> unitInformationEntries,
 				IAsyncEnumerator<CoordinatesOverrideEntry> overrides)
 		{
 			Console.WriteLine("Patching unit info lists");
-			Dictionary<string, CoordinatesOverrideEntry> overridesLookup = new();
+			CoordinatesOverrideStream coStream = new();
+			Dictionary<object, CoordinatesOverrideEntry> overridesLookup = new();
 			while (await overrides.MoveNextAsync())
 				overridesLookup.Add(overrides.Current.TraditionalChineseName, overrides.Current);
-			UnitInformationEntry.SharedAttributeKeys = unitElement[0].Deserialize<string[]>();
-			IEnumerable<string?[]> unitList = unitElement.EnumerateArray().Skip(1).Select(e => e.Deserialize<string?[]>());
-			int nameKeyIndex = Array.IndexOf(UnitInformationEntry.SharedAttributeKeys, "nameTChinese");
-			int addressKeyIndex = Array.IndexOf(UnitInformationEntry.SharedAttributeKeys, "addressOverride");
-			IEnumerable<Vector2> longlatList = longlatElement.EnumerateArray()
-					.Select(e => e.Deserialize<float[]>()).Select(l => new Vector2(l[0], l[1]));
-			foreach ((string?[] attributeValues, Vector2 coordinates) in unitList.Zip(longlatList))
-			{
-				Dictionary<string, string?> attributes = new();
-				foreach ((string key, string? value) in UnitInformationEntry.SharedAttributeKeys.Zip(attributeValues))
-					attributes.Add(key, value);
-				Vector2? overridenCoordinates = coordinates;
-				if (overridesLookup.ContainsKey(attributes["nameTChinese"]))
-				{
-					CoordinatesOverrideEntry overrideEntry = overridesLookup[attributes["nameTChinese"]];
-					overridenCoordinates = overrideEntry.OverridingCoordinates;
-					attributeValues[addressKeyIndex] = overrideEntry.ProposedAddress;
-				}
-				yield return new UnitInformationEntry(attributes, (Vector2)overridenCoordinates);
-			}
+			coStream.PendingChanges = overridesLookup;
+			IAsyncEnumerator<UnitInformationEntry> overridenEntries = coStream.OverrideEntries(unitInformationEntries);
+			while (await overridenEntries.MoveNextAsync()) yield return overridenEntries.Current;
 		}
 
 		public static async Task PatchUnitInfo(IAsyncEnumerator<UnitInformationEntry> entries,
