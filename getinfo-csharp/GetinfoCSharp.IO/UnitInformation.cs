@@ -96,7 +96,7 @@ namespace WylieYYYY.GetinfoCSharp.IO
 		public int CompareTo(UnitInformationEntry? other)
 		{
 			if (other == null) throw new ArgumentNullException(/*HACK*/);
-			int order = other.Coordinates.Y.CompareTo(other.Coordinates.Y);
+			int order = other.Coordinates.Y.CompareTo(Coordinates.Y);
 			return order == 0 ? 1 : order;
 		}
 	}

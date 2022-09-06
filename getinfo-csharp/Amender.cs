@@ -18,12 +18,12 @@ namespace getinfo_csharp
 {
 	static class Amender
 	{
-		public static async Task AmendUnitInfo(Dictionary<string, string> overrideTable, string executablePath)
+		public static async Task AmendUnitInfo(CoordinatesOverrideStream overrideStream, string executablePath)
 		{
 			IAsyncEnumerator<UnitInformationEntry> unitInformationEntries = ReadUnitInfo(executablePath);
-			IAsyncEnumerator<CoordinatesOverrideEntry> overrides = RequestOverrideLonglat(overrideTable);
+			Console.WriteLine("Patching unit info lists");
 			IAsyncEnumerator<UnitInformationEntry> patchedUnitInformationEntries =
-					OverrideEntries(unitInformationEntries, overrides);
+					overrideStream.OverrideEntries(unitInformationEntries);
 			await PatchUnitInfo(patchedUnitInformationEntries, executablePath);
 		}
 
@@ -56,60 +56,32 @@ namespace getinfo_csharp
 			}
 		}
 
-		public static async IAsyncEnumerator<CoordinatesOverrideEntry> RequestOverrideLonglat(
+		public static async Task<CoordinatesOverrideStream> RequestOverrideLonglat(
 				Dictionary<string, string> overrideTable)
 		{
 			Console.WriteLine("Requesting override table");
 			List<CoordinatesOverrideEntry> overrides = overrideTable.Select(
 					p => new CoordinatesOverrideEntry(p.Key, p.Value.Split('\t')[3], p.Value.Split('\t')[0],
 					new Vector2(float.Parse(p.Value.Split('\t')[1]), float.Parse(p.Value.Split('\t')[2])))).ToList();
-			IEnumerator<CoordinatesOverrideEntry> overrideEnumerator = overrides.GetEnumerator();
 			Pacer estimatePacer = new(overrides.Count);
-			List<Task<CoordinatesOverrideEntry>> tasks = new();
-			async IAsyncEnumerator<CoordinatesOverrideEntry> RequestChunk()
-			{
-				IAsyncEnumerator<CoordinatesOverrideEntry> chunk = tasks.UnrollCompletedTasks();
-				while (await chunk.MoveNextAsync())
-				{
-					if (chunk.Current.ProposedAddress == null)
-					{
-						estimatePacer.Step();
-						continue;
-					}
-					if (chunk.Current.OverridingCoordinates == null)
-						Console.WriteLine($"Request failed for {chunk.Current.TraditionalChineseName}");
-					else Console.WriteLine($"Got response for {chunk.Current.TraditionalChineseName}");
-					Console.WriteLine($"[Estimated time left: {estimatePacer.Step().ToString()}]");
-					if (chunk.Current.OverridingCoordinates != null) yield return chunk.Current;
-				}
-			}
-			while (overrideEnumerator.MoveNext())
-			{
-				tasks.Add(overrideEnumerator.Current.Locate(
-						address => AlsLocationInfo.FromAddress(address, false, Program.client)));
-				if (tasks.Count == Program.batchSize)
-				{
-					IAsyncEnumerator<CoordinatesOverrideEntry> chunk = RequestChunk();
-					while (await chunk.MoveNextAsync()) yield return chunk.Current;
-				}
-			}
-			IAsyncEnumerator<CoordinatesOverrideEntry> lastChunk = RequestChunk();
-			while (await lastChunk.MoveNextAsync()) yield return lastChunk.Current;
-			estimatePacer.Stop();
-		}
-
-		private static async IAsyncEnumerator<UnitInformationEntry> OverrideEntries(
-				IAsyncEnumerator<UnitInformationEntry> unitInformationEntries,
-				IAsyncEnumerator<CoordinatesOverrideEntry> overrides)
-		{
-			Console.WriteLine("Patching unit info lists");
-			CoordinatesOverrideStream coStream = new();
 			Dictionary<object, CoordinatesOverrideEntry> overridesLookup = new();
-			while (await overrides.MoveNextAsync())
-				overridesLookup.Add(overrides.Current.TraditionalChineseName, overrides.Current);
+			NetworkUtility.AddressLocator locator = address => AlsLocationInfo.FromAddress(
+					address, false, Program.client);
+			IAsyncEnumerator<CoordinatesOverrideEntry> asyncOverrides = overrides.GetEnumerator()
+					.ToAsyncEnumerator().ChunkComplete(entry => entry.Locate(locator), Program.batchSize);
+			while (await asyncOverrides.MoveNextAsync())
+			{
+				string estimatedTimeString = estimatePacer.Step().ToString();
+				if (asyncOverrides.Current.ProposedAddress == null) continue;
+				if (asyncOverrides.Current.OverridingCoordinates == null)
+					Console.WriteLine($"Request failed for {asyncOverrides.Current.TraditionalChineseName}");
+				else Console.WriteLine($"Got response for {asyncOverrides.Current.TraditionalChineseName}");
+				Console.WriteLine($"[Estimated time left: {estimatedTimeString}]");
+			}
+			estimatePacer.Stop();
+			CoordinatesOverrideStream coStream = new();
 			coStream.PendingChanges = overridesLookup;
-			IAsyncEnumerator<UnitInformationEntry> overridenEntries = coStream.OverrideEntries(unitInformationEntries);
-			while (await overridenEntries.MoveNextAsync()) yield return overridenEntries.Current;
+			return coStream;
 		}
 
 		public static async Task PatchUnitInfo(IAsyncEnumerator<UnitInformationEntry> entries,
