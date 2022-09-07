@@ -37,11 +37,10 @@ namespace getinfo_csharp
 			XDocument serviceRoot = XDocument.Parse(await NetworkUtility.RequestTwiceOrBail(client, serviceUrl));
 			XNamespace xmlnsUrl = Regex.Match(serviceRoot.Document.Root.Name.ToString(),
 				@"(?<={)(https?://[^}]*)(?=})").Value;
-			Console.WriteLine("Parsing address");
-			(int[], string[], (int, int)) resultList = ParseAddress(serviceRoot, xmlnsUrl, overrideStream, executablePath);
-			Console.WriteLine("Requesting for geospatial information");
-			await BatchReq(resultList.Item1, resultList.Item2, serviceRoot,
-				xmlnsUrl, resultList.Item3, overrideStream, executablePath);
+			Console.WriteLine("Parsing and requesting for geospatial information");
+			await Amender.PatchUnitInfo(overrideStream.OverrideEntries(ParseAndRequestUnit(serviceRoot, xmlnsUrl,
+					overrideStream, executablePath)), executablePath);
+			// Console.WriteLine("Applying override table");
 			Console.WriteLine("Executed getinfo succesfully");
 			Console.ReadLine();
 		}
@@ -84,198 +83,41 @@ namespace getinfo_csharp
 			return (xmlUrl, await Amender.RequestOverrideLonglat(table));
 		}
 
-		// take in XML root with specific tags and parse address
-		private static (int[], string[], (int, int)) ParseAddress(XDocument root, XNamespace xmlnsUrl,
-			CoordinatesOverrideStream overrides, string executablePath)
+		private static async IAsyncEnumerator<UnitInformationEntry> ParseAndRequestUnit(XDocument root,
+				XNamespace xmlnsUrl, CoordinatesOverrideStream overrides, string executablePath)
 		{
-			List<int> parsedIndex = new List<int>();
-			List<string> parsedAddress = new List<string>();
-			int unparsedCount = 0;
-			StreamWriter overrideStream = new StreamWriter(executablePath + "/../override.csv", true, Encoding.UTF8);
-			int unitIndex = 0;
-			foreach (XElement unit in root.Descendants(xmlnsUrl + "serviceUnit"))
+			using StreamWriter overrideStream = new StreamWriter(executablePath + "/../override.csv", true, Encoding.UTF8);
+			IEnumerator<UnitInformationEntry> GetEntriesFromXml()
 			{
-				string location = unit.Descendants(xmlnsUrl + "addressEnglish").First().Value.ToUpper();
-				// replace plate number list and stray double quote
-				location = Regex.Replace(location, @"([0-9]+[A-Z]{0,2}, )(?=[0-9]+[A-Z]{0,2})", "");
-				location = location.Replace("\"", "");
-				// remove LOT and DD, use ALSO KNOWN AS tag to avoid
-				location = Regex.Replace(location, @"LOTS? .* IN D\.?D\.? ?[0-9]+", "");
-				location = Regex.Replace(location, @"D\.?D\.? [0-9]+ LOT [0-9]+", "");
-				Match alternative = Regex.Match(location, @"(\(ALSO KNOWN AS )([^\)]*)(\)$)");
-				if (alternative.Success) location = alternative.Groups[2].Value;
-				// remove bracket from address and split into fields
-				string bracketRegex = @"(\uFF08|\().*(\uFF09|\))";
-				location = Regex.Replace(location, bracketRegex, "");
-				string[] fields = location.Split(',');
-				// strip trailig or leading space by comma
-				fields = fields.Select(s => s.Trim()).ToArray();
-				// reset flags detail decides if the scope is large enough
-				bool detail = true;
-				// when to start keeping for correct scope
-				int trimIndex = 0;
-				// the scope maybe large enough, but keep searching
-				bool weakLarge = false;
-				for (int index = 0; index < fields.Length; index++)
-				{
-					// remove additional number
-					string stripNumRegex = @"([A-Z]{0,2}[0-9]+[A-Z]{0,2}(/F)? ?AND ?)" +
-						@"(?=[A-Z]{0,2}[0-9]+[A-Z]{0,2}(/F)?)";
-					foreach (string symbol in new string[]{ "AND", "=", "&" })
-					{
-						fields[index] = Regex.Replace(fields[index], stripNumRegex.Replace("AND", symbol), "");
-					}
-					// large enough scope, accept all
-					if (!detail) continue;
-					// do not attempt to parse address with lot number
-					if (Regex.Match(fields[index], @"(( |^)LOT ?[0-9]+|( |^)D\.?D\.? ?[0-9]+)").Success) break;
-					// remove all floor number but keep house info
-					while (Regex.Match(fields[index], @"(G|[0-9])\/F").Success)
-					{
-						string floorRegex = @"(.*(G|[0-9])\/F (OF ?)?)(?=\S+)";
-						bool regexMatched = Regex.Match(fields[index], floorRegex).Success;
-						fields[index] = Regex.Replace(fields[index], floorRegex, "").Trim();
-						if (regexMatched)
-						{
-							trimIndex = index;
-							// the info following may not be useful
-							weakLarge = true;
-						}
-						else
-						{
-							trimIndex = index + 1;
-							break;
-						}
-					}
-					// house number and street regex
-					string numRegex = @"^(.* )?(NOS?\.? ?)?[0-9]+[A-Z]{0,2}";
-					string ruralRoad = @"|KAM TIN SHI|SHEUNG LING PEI|SHEUNG WO CHE";
-					string roadRegex = @".*(AVENUE|CIRCUIT|COURT|CRESCENT|DRIVE|LANE|LAU" +
-						@"|PATH|ROAD|RD|STREET|TERRACE|TSUEN|VILLA(GE)?" + ruralRoad + @")";
-					stripNumRegex = @"^.*[^0-9]+(?=[0-9]+)";
-					// house number is put alongside street name
-					if (Regex.Match(fields[index], numRegex + roadRegex).Success)
-					{
-						fields[index] = Regex.Replace(fields[index], stripNumRegex, "");
-						trimIndex = index;
-						detail = false;
-						continue;
-					}
-					// house number in the field before street name
-					if (Regex.Match(fields[index], numRegex + '$').Success &&
-						fields.Length != index + 1 && Regex.Match(fields[index + 1], roadRegex).Success)
-					{
-						fields[index] = Regex.Replace(fields[index], stripNumRegex, "");
-						// it will be picked up in the next loop
-						fields[index + 1] = fields[index] + ' ' + fields[index + 1];
-					}
-					// check building name
-					string ruralUnit = @"|PAK SHE";
-					if (Regex.Match(fields[index], @"(BLOCK|BUILDING|CENT(ER|RE)|CHUEN|COURT" +
-						@"|DAI HA|ESTATE|HOUSE|MALL|MANSION|TSUEN" + ruralUnit + @")$").Success)
-					{
-						// strip unclean floor name
-						fields[index] = Regex.Replace(fields[index], @".* OF ", "");
-						// strip flat number
-						fields[index] = Regex.Replace(fields[index], @"[^0-9]*[0-9]+ ", "");
-						trimIndex = index;
-						detail = false;
-						continue;
-					}
-					// strip unclean unit name
-					fields[index] = Regex.Replace(fields[index], @"(.* AT )(?=.*)", "");
-				}
-				// scope not large enough, address is unparsed
-				if (detail && !weakLarge)
-				{
-					string name = unit.Descendants(xmlnsUrl + "nameTChinese").First().Value.ToUpper();
-					string address = unit.Descendants(xmlnsUrl + "addressTChinese").First().Value;
-					if (!overrides.PendingChanges.ContainsKey(name))
-						overrideStream.WriteLine(new CoordinatesOverrideEntry(name, address));
-					unparsedCount++;
-					Console.WriteLine("Unable to parse " + unit.Descendants(xmlnsUrl +
-						"addressEnglish").First().Value);
-				}
-				else
-				{
-					parsedIndex.Add(unitIndex);
-					// trim detail and join the address
-					string address = string.Join(", ", fields.Skip(trimIndex));
-					address = Regex.Replace(address, @", ?,", ",");
-					parsedAddress.Add(address);
-					Console.WriteLine("Parsed " + address);
-				}
-				unitIndex++;
-			}
-			overrideStream.Close();
-			Console.WriteLine($"Parsing ratio is {parsedAddress.Count}:{unparsedCount}");
-			// return all required data for traversing XML
-			return (parsedIndex.ToArray(), parsedAddress.ToArray(), (parsedAddress.Count, unparsedCount));
-		}
-
-		// take in valid address list and perform API request
-		private static async Task BatchReq(int[] parsedIndex, string[] parsedAddress, XDocument root,
-			XNamespace xmlnsUrl, (int, int) ratio, CoordinatesOverrideStream overrides, string executablePath)
-		{
-			// allocate full length longlat list
-			XElement[] unitList = root.Descendants(xmlnsUrl + "serviceUnit").ToArray();
-			Vector2[] longlatList = new Vector2[unitList.Length].Select(t => new Vector2(0, -91)).ToArray();
-			// encode and request multiple URL simultaneously
-			IEnumerable<(int, string)> indexAddressPairs = parsedAddress.Select((s, i) => (parsedIndex[i], s));
-			StreamWriter overrideStream = new StreamWriter(executablePath + "/../override.csv", true, Encoding.UTF8);
-			Pacer estimatePacer = new Pacer(parsedIndex.Length);
-			for (int batchStart = 0; batchStart < parsedIndex.Length; batchStart += batchSize)
-			{
-				List<Task<(int, AlsLocationInfo?)>> taskResponse = indexAddressPairs.Skip(batchStart).Take(batchSize)
-						.Select(async kv => (kv.Item1, await AlsLocationInfo.FromAddress(kv.Item2, true, client))).ToList();
-				IAsyncEnumerator<(int, AlsLocationInfo?)> taskEnumerator = taskResponse.UnrollCompletedTasks();
-				while (await taskEnumerator.MoveNextAsync())
-				{
-					(int unitIndex, AlsLocationInfo? locationInfo) = taskEnumerator.Current;
-					// check district correctness
-					if (locationInfo == null)
-					{
-						Console.WriteLine($"Request failed for {parsedAddress[unitIndex]}");
-						continue;
-					}
-					Console.WriteLine($"Got response for {locationInfo.SourceAddress}");
-					Console.WriteLine("[Estimated time left: " + estimatePacer.Step().ToString() + ']');
-					XElement targetUnit = unitList[unitIndex];
-					string parsedDistrict = targetUnit.Descendants(xmlnsUrl + "districtEnglish").First().Value;
-					parsedDistrict = parsedDistrict.ToUpper().Replace(" AND ", " & ");
-					string name = targetUnit.Descendants(xmlnsUrl + "nameTChinese").First().Value.ToUpper();
-					// append to override table if district test failed and no entry exists
-					if ((!locationInfo.District?.Contains(parsedDistrict) ?? false)
-							&& !overrides.PendingChanges.ContainsKey(name))
-					{
-						Console.WriteLine("District test failed for " + locationInfo.SourceAddress);
-						string tcaddress = targetUnit.Descendants(xmlnsUrl + "addressTChinese").First().Value;
-						overrideStream.WriteLine(new CoordinatesOverrideEntry(name, tcaddress));
-						ratio = (ratio.Item1 - 1, ratio.Item2 + 1);
-						continue;
-					}
-					longlatList[unitIndex] = locationInfo.Coordinates;
-				}
-			}
-			estimatePacer.Stop();
-			Console.WriteLine($"Query ratio is {ratio.Item1}:{ratio.Item2}");
-			overrideStream.Close();
-
-			Console.WriteLine("Applying override table");
-			async IAsyncEnumerator<UnitInformationEntry> GetEntries()
-			{
-				foreach ((XElement unit, Vector2 coordinates) in
-						root.Descendants(xmlnsUrl + "serviceUnit").Zip(longlatList))
+				foreach (XElement unit in root.Descendants(xmlnsUrl + "serviceUnit"))
 				{
 					Dictionary<string, string?> propDict = new();
 					foreach (XElement prop in unit.Descendants())
 						propDict.Add(prop.Name.LocalName, prop.Value);
 					UnitInformationEntry.SharedAttributeKeys = propDict.Keys.ToArray();
 					propDict.Add("addressOverride", null);
-					yield return new UnitInformationEntry(propDict, coordinates);
+					yield return new UnitInformationEntry(propDict, UnitInformationEntry.MissingCoordinates);
 				}
 			}
-			await Amender.PatchUnitInfo(overrides.OverrideEntries(GetEntries()), executablePath);
+			NetworkUtility.AddressLocator locator = address => AlsLocationInfo.FromAddress(
+					address, true, client);
+			IAsyncEnumerator<UnitInformationEntry> locatedEntries = GetEntriesFromXml().ToAsyncEnumerator()
+					.ChunkComplete(entry => entry.Locate(locator), batchSize);
+			while (await locatedEntries.MoveNextAsync())
+			{
+				string name = locatedEntries.Current["nameTChinese"].ToUpperInvariant();
+				if (locatedEntries.Current.Coordinates == UnitInformationEntry.MissingCoordinates)
+				{
+					string address = locatedEntries.Current["addressTChinese"];
+					if (!overrides.PendingChanges.ContainsKey(name))
+						overrideStream.WriteLine(new CoordinatesOverrideEntry(name, address));
+					Console.WriteLine("Unable to parse or locate " + name);
+				}
+				else Console.WriteLine($"Located {name}");
+				// Console.WriteLine("[Estimated time left: " + estimatePacer.Step().ToString() + ']');
+				yield return locatedEntries.Current;
+			}
+			// Console.WriteLine($"Query ratio is {ratio.Item1}:{ratio.Item2}");
 		}
 	}
 }

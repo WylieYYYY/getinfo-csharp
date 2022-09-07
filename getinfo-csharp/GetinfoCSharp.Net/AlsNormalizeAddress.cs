@@ -110,7 +110,7 @@ namespace WylieYYYY.GetinfoCSharp.Net
 			if (!hasLargeEnoughScope && shouldKeepSearching) return null;
 			addressLines = (from line in addressLines.Skip(largeScopeStartIndex)
 					where line != string.Empty select line).ToArray();
-			return string.Join(", ", addressLines);
+			return Regex.Replace(string.Join(", ", addressLines), ", ?,", ",");
 		}
 	}
 }

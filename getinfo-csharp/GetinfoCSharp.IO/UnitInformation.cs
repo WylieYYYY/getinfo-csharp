@@ -57,7 +57,8 @@ namespace WylieYYYY.GetinfoCSharp.IO
 			string? address = this["addressEnglish"];
 			if (address == null) throw new FileFormatException("" /*HACK*/);
 			AlsLocationInfo? locationInfo = await locator(address);
-			string? normalizedDistrict = this["districtEnglish"]?.Replace(" AND ", " & ");
+			string? normalizedDistrict = this["districtEnglish"]?.Replace(" AND ", " & ")
+					.ToUpperInvariant();
 			string? fetchedDistrict = locationInfo?.District;
 			// skip district test if either sources does not have district information
 			bool shouldSkipDistrictCheck = normalizedDistrict == null || fetchedDistrict == null;
