@@ -105,7 +105,7 @@ namespace WylieYYYY.GetinfoCSharp.IO
 		{
 			UnitInformationEntry castedEntry => castedEntry["nameTChinese"]?.ToUpperInvariant(),
 			CoordinatesOverrideEntry castedEntry => castedEntry.TraditionalChineseName,
-			_ => throw new ArgumentException(/*HACK*/),
+			_ => throw new ArgumentException(nameof(entry)/*HACK*/),
 		};
 	}
 }

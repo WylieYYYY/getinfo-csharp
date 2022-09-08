@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<root>
+  <!-- Standard Output Message -->
+    <!-- Introduction -->
+    <data name="Message_GenerateLocation" xml:space="preserve">
+      <value>Generated unit information will be contained in "{0}".</value>
+    </data>
+    <data name="Message_InputCommand" xml:space="preserve">
+      <value>Enter URL of the unit information XML (Leave empty if "{0}" exists, or 'amend' when applying "{0}" to "{1}"):</value>
+    </data>
+    <!-- Locating Message -->
+    <data name="Message_FailedToLocate" xml:space="preserve">
+      <value>Failed to locate {0}.</value>
+    </data>
+    <data name="Message_Located" xml:space="preserve">
+      <value>Located {0} successfully.</value>
+    </data>
+    <data name="Message_TimeEstimation" xml:space="preserve">
+      <value>[Estimated time left: {0}]</value>
+    </data>
+    <!-- Exit Message -->
+    <data name="Message_ExitSuccess" xml:space="preserve">
+      <value>Getinfo success, exiting.</value>
+    </data>
+    <data name="Message_ExitFailed" xml:space="preserve">
+      <value>Getinfo failed, aborting.</value>
+    </data>
+  <!-- Coordinates Override File Content -->
+  <data name="CoordinatesOverride_SeeReadme" xml:space="preserve">
+    <value>See README for guidance on editing this file.</value>
+  </data>
+  <data name="CoordinatesOverride_Headings" xml:space="preserve">
+    <value>[Traditional Chinese Name]	[Proposed Address]	[Longtitude Offset]	[Latitude Offset]	[Registered Address]</value>
+  </data>
+  <data name="CoordinatesOverride_XmlUrlOption" xml:space="preserve">
+    <value>xml_url	{0}</value>
+  </data>
+  <!-- Exception Message -->
+</root>

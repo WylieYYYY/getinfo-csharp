@@ -71,12 +71,12 @@ namespace getinfo_csharp
 					.ToAsyncEnumerator().ChunkComplete(entry => entry.Locate(locator), Program.batchSize);
 			while (await asyncOverrides.MoveNextAsync())
 			{
-				string estimatedTimeString = estimatePacer.Step().ToString();
+				TimeSpan estimatedTimeLeft = estimatePacer.Step();
 				if (asyncOverrides.Current.ProposedAddress == null) continue;
 				if (asyncOverrides.Current.OverridingCoordinates == null)
-					Console.WriteLine($"Request failed for {asyncOverrides.Current.TraditionalChineseName}");
-				else Console.WriteLine($"Got response for {asyncOverrides.Current.TraditionalChineseName}");
-				Console.WriteLine($"[Estimated time left: {estimatedTimeString}]");
+					Console.WriteLine(Resources.Messages.FailedToLocate(asyncOverrides.Current.TraditionalChineseName));
+				else Console.WriteLine(Resources.Messages.Located(asyncOverrides.Current.TraditionalChineseName));
+				Console.WriteLine(Resources.Messages.TimeEstimation(estimatedTimeLeft));
 			}
 			estimatePacer.Stop();
 			CoordinatesOverrideStream coStream = new();

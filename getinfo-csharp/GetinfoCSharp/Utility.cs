@@ -63,7 +63,7 @@ namespace WylieYYYY.GetinfoCSharp
 				this IAsyncEnumerator<TInput> values, Func<TInput, Task<TOutput>> taskGenerator,
 				int chunkSize)
 		{
-			if (chunkSize <= 0) throw new ArgumentOutOfRangeException(/*HACK*/);
+			if (chunkSize <= 0) throw new ArgumentOutOfRangeException(nameof(chunkSize)/*HACK*/);
 			List<Task<TOutput>> taskAccumulator = new(chunkSize);
 			while (await values.MoveNextAsync())
 			{

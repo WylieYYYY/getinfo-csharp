@@ -6,8 +6,4 @@
     <RootNamespace>getinfo_csharp</RootNamespace>
   </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="runtime.any.System.Resources.ResourceManager" Version="4.3.0" />
-  </ItemGroup>
-
 </Project>
