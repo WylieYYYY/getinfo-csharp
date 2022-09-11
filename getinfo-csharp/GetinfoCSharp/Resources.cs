@@ -36,11 +36,15 @@ namespace WylieYYYY.GetinfoCSharp
 			public static string Headings =>
 					_resourceManager.GetString("CoordinatesOverride_Headings")!;
 			public static string XmlUrlOption(string url) =>
-					_resourceManager.GetString("CoordinatesOverride_XmlUrlOption")!;
+					string.Format(_resourceManager.GetString("CoordinatesOverride_XmlUrlOption")!, url);
 		}
 
 		public static class Exception
 		{
+			public static string LineTooLong =>
+					_resourceManager.GetString("Exception_LineTooLong")!;
+			public static string NotPositiveInteger(string paramName) =>
+					string.Format(_resourceManager.GetString("Exception_NotPositiveInteger")!, paramName);
 		}
 	}
 }

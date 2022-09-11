@@ -10,9 +10,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
-using WylieYYYY.GetinfoCSharp;
 using WylieYYYY.GetinfoCSharp.IO;
-using WylieYYYY.GetinfoCSharp.Net;
 
 namespace getinfo_csharp
 {
@@ -54,34 +52,6 @@ namespace getinfo_csharp
 					attributes.Add(key, value);
 				yield return new UnitInformationEntry(attributes, longlat);
 			}
-		}
-
-		public static async Task<CoordinatesOverrideStream> RequestOverrideLonglat(
-				Dictionary<string, string> overrideTable)
-		{
-			Console.WriteLine("Requesting override table");
-			List<CoordinatesOverrideEntry> overrides = overrideTable.Select(
-					p => new CoordinatesOverrideEntry(p.Key, p.Value.Split('\t')[3], p.Value.Split('\t')[0],
-					new Vector2(float.Parse(p.Value.Split('\t')[1]), float.Parse(p.Value.Split('\t')[2])))).ToList();
-			Pacer estimatePacer = new(overrides.Count);
-			Dictionary<object, CoordinatesOverrideEntry> overridesLookup = new();
-			NetworkUtility.AddressLocator locator = address => AlsLocationInfo.FromAddress(
-					address, false, Program.client);
-			IAsyncEnumerator<CoordinatesOverrideEntry> asyncOverrides = overrides.GetEnumerator()
-					.ToAsyncEnumerator().ChunkComplete(entry => entry.Locate(locator), Program.batchSize);
-			while (await asyncOverrides.MoveNextAsync())
-			{
-				TimeSpan estimatedTimeLeft = estimatePacer.Step();
-				if (asyncOverrides.Current.ProposedAddress == null) continue;
-				if (asyncOverrides.Current.OverridingCoordinates == null)
-					Console.WriteLine(Resources.Messages.FailedToLocate(asyncOverrides.Current.TraditionalChineseName));
-				else Console.WriteLine(Resources.Messages.Located(asyncOverrides.Current.TraditionalChineseName));
-				Console.WriteLine(Resources.Messages.TimeEstimation(estimatedTimeLeft));
-			}
-			estimatePacer.Stop();
-			CoordinatesOverrideStream coStream = new();
-			coStream.PendingChanges = overridesLookup;
-			return coStream;
 		}
 
 		public static async Task PatchUnitInfo(IAsyncEnumerator<UnitInformationEntry> entries,

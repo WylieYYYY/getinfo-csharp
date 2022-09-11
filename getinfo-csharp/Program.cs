@@ -54,34 +54,32 @@ namespace getinfo_csharp
 		private static async Task<(string, CoordinatesOverrideStream)> GetOverrideStream(string xmlUrl,
 			string executablePath)
 		{
-			Dictionary<string, string> table = new Dictionary<string, string>();
-			if (File.Exists(executablePath + "/../override.csv"))
+			if (!File.Exists(executablePath + "/../override.csv"))
 			{
-				Console.WriteLine("Reading address override table");
-				StreamReader stream = new StreamReader(executablePath + "/../override.csv", Encoding.UTF8);
-				while (!stream.EndOfStream)
-				{
-					string[] fields = stream.ReadLine().Split('\t');
-					if (fields[0] == "xml_url" && xmlUrl == "") xmlUrl = fields[1].TrimEnd();
-					if (fields[0] == "batch_size") batchSize = int.Parse(fields[1].TrimEnd());
-					// ignore any entry key with lowercase character and empty line
-					if (fields[0].Any(char.IsLower) || fields[0] == "") continue;
-					table.Add(fields[0], string.Join('\t', fields.Skip(1).Select(s => s.Trim())));
-				}
-				stream.ReadLine();
-				stream.Close();
-			}
-			else
-			{
+				FileStream fileStream = new(executablePath + "/../override.csv", FileMode.Create);
 				Console.WriteLine("Creating address override table");
 				// UTF8 BOM for Excel
-				StreamWriter stream = new StreamWriter(executablePath + "/../override.csv", false, Encoding.UTF8);
+				StreamWriter stream = new StreamWriter(fileStream, new UTF8Encoding(true));
 				stream.WriteLine(Resources.CoordinatesOverride.SeeReadme);
 				stream.WriteLine(Resources.CoordinatesOverride.Headings);
 				stream.WriteLine(Resources.CoordinatesOverride.XmlUrlOption(xmlUrl));
 				stream.Close();
+				return (xmlUrl, new CoordinatesOverrideStream(fileStream));
 			}
-			return (xmlUrl, await Amender.RequestOverrideLonglat(table));
+			Console.WriteLine("Reading address override table");
+			// Console.WriteLine("Requesting override table");
+			CoordinatesOverrideStream overrideStream = new(new FileStream(
+					executablePath + "/../override.csv", FileMode.Open));
+			await overrideStream.ReadConfigurations();
+			NetworkUtility.AddressLocator locator = address => AlsLocationInfo.FromAddress(
+					address, false, client);
+			IAsyncEnumerator<object> identifiers = overrideStream.ReadLocatedEntries(locator);
+			// Pacer estimatePacer = new(overrides.Count);
+			while (await identifiers.MoveNextAsync())
+				// TimeSpan estimatedTimeLeft = estimatePacer.Step();
+				Console.WriteLine(Resources.Messages.Located(identifiers.Current.ToString()!));
+				// Console.WriteLine(Resources.Messages.TimeEstimation(estimatedTimeLeft));
+			return (xmlUrl == string.Empty ? overrideStream.SourceUrl! : xmlUrl, overrideStream);
 		}
 
 		private static async IAsyncEnumerator<UnitInformationEntry> ParseAndRequestUnit(XDocument root,
@@ -95,15 +93,15 @@ namespace getinfo_csharp
 					Dictionary<string, string?> propDict = new();
 					foreach (XElement prop in unit.Descendants())
 						propDict.Add(prop.Name.LocalName, prop.Value);
-					UnitInformationEntry.SharedAttributeKeys = propDict.Keys.ToArray();
 					propDict.Add("addressOverride", null);
+					UnitInformationEntry.SharedAttributeKeys = propDict.Keys.ToArray();
 					yield return new UnitInformationEntry(propDict, UnitInformationEntry.MissingCoordinates);
 				}
 			}
 			NetworkUtility.AddressLocator locator = address => AlsLocationInfo.FromAddress(
 					address, true, client);
 			IAsyncEnumerator<UnitInformationEntry> locatedEntries = GetEntriesFromXml().ToAsyncEnumerator()
-					.ChunkComplete(entry => entry.Locate(locator), batchSize);
+					.ChunkComplete(entry => entry.Locate(locator), overrides.BatchSize);
 			while (await locatedEntries.MoveNextAsync())
 			{
 				string name = locatedEntries.Current["nameTChinese"].ToUpperInvariant();

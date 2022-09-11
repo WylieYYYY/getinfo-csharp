@@ -7,7 +7,7 @@
       <value>Generated unit information will be contained in "{0}".</value>
     </data>
     <data name="Message_InputCommand" xml:space="preserve">
-      <value>Enter URL of the unit information XML (Leave empty if "{0}" exists, or 'amend' when applying "{0}" to "{1}"):</value>
+      <value>Enter URL of the unit information XML (Leave empty if "{0}" exists, or 'amend' when applying "{0}" to "{1}"): </value>
     </data>
     <!-- Locating Message -->
     <data name="Message_FailedToLocate" xml:space="preserve">
@@ -37,4 +37,10 @@
     <value>xml_url	{0}</value>
   </data>
   <!-- Exception Message -->
+  <data name="Exception_LineTooLong" xml:space="preserve">
+    <value>A line is abnormally long and cannot be read.</value>
+  </data>
+  <data name="Exception_NotPositiveInteger" xml:space="preserve">
+    <value>Supplied {0} is not a positive integer.</value>
+  </data>
 </root>

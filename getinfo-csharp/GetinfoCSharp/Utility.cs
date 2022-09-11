@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 namespace WylieYYYY.GetinfoCSharp
 {
 	/// <summary>General non-domain-specific utilities.</summary>
-	public static class Utility
+	public static partial class Utility
 	{
 		#pragma warning disable CS1998
 		/// <summary>Gets an empty asynchronous enumerator of a given value type.</summary>
