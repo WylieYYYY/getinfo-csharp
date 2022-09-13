@@ -35,8 +35,8 @@ namespace WylieYYYY.GetinfoCSharp
 					_resourceManager.GetString("CoordinatesOverride_SeeReadme")!;
 			public static string Headings =>
 					_resourceManager.GetString("CoordinatesOverride_Headings")!;
-			public static string XmlUrlOption(string url) =>
-					string.Format(_resourceManager.GetString("CoordinatesOverride_XmlUrlOption")!, url);
+			public static string XmlUrlOption(string url) => $"xml_url\t{url}";
+			public static string BatchSizeOption(int size) => $"batch_size\t{size}";
 		}
 
 		public static class Exception

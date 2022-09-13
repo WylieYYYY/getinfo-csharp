@@ -91,12 +91,12 @@ namespace WylieYYYY.GetinfoCSharp.IO
 
 		private Stream _stream;
 		private StreamReader _reader;
-		private SemaphoreSlim _semaphore = new(1, 1);
+		private SemaphoreSlim _readSemaphore = new(1, 1);
 		private string? _overreadLine = null;
 		private int _batchSize = 50;
-		// TODO: make this private when read method is implemented
-		[Obsolete("Make this private after reading from file is implemented.")]
-		public Dictionary<object, CoordinatesOverrideEntry> PendingChanges = new();
+		private Dictionary<object, CoordinatesOverrideEntry> _pendingChanges = new();
+		private StreamWriter? _writer = null;
+		private SemaphoreSlim _writeSemaphore = new(1, 1);
 
 		/// <summary>Initializes a coordinates override stream.</summary>
 		/// <param name="stream">Stream to read or write entries, usually to the backing file.</param>
@@ -136,7 +136,7 @@ namespace WylieYYYY.GetinfoCSharp.IO
 			while (await entries.MoveNextAsync())
 			{
 				object identifier = GetModificationIdentifier(entries.Current)!;
-				if (!PendingChanges.TryAdd(identifier, entries.Current))
+				if (!_pendingChanges.TryAdd(identifier, entries.Current))
 					throw new FileFormatException(/*HACK*/);
 				if (entries.Current.ProposedAddress == null) continue;
 				yield return identifier;
@@ -152,18 +152,52 @@ namespace WylieYYYY.GetinfoCSharp.IO
 			while (await entries.MoveNextAsync())
 			{
 				object? modificationIdentifier = GetModificationIdentifier(entries.Current);
-				if (modificationIdentifier != null && PendingChanges.ContainsKey(modificationIdentifier))
-					PendingChanges[modificationIdentifier].OverrideEntry(entries.Current);
+				if (modificationIdentifier != null && _pendingChanges.ContainsKey(modificationIdentifier))
+					_pendingChanges[modificationIdentifier].OverrideEntry(entries.Current);
 				yield return entries.Current;
 			}
 		}
 
-		/// <summary>Disposes the underlying stream, reader, and semaphore.</summary>
+		/// <summary>
+		///  Write a <see cref="CoordinatesOverrideEntry"/> to the backing stream,
+		///  adding a preamble if the backing stream represents a new backing file.
+		/// </summary>
+		/// <param name="entry">Entry to be written to the backing stream.</param>
+		/// <exception cref="InvalidOperationException">
+		///  If the backing file is not fully read,
+		///  all entries and configuration must be read before writing.
+		/// </exception>
+		public async Task WriteEntry(CoordinatesOverrideEntry entry)
+		{
+			// reading is prohibited after writing has commence
+			if (_readSemaphore.CurrentCount != 0) await _readSemaphore.WaitAsync();
+			using SemaphoreHandle semaphoreHandle = await _writeSemaphore.WaitHandle();
+			if (_stream.ReadByte() != -1) throw new InvalidOperationException(/*HACK*/);
+			bool hasNoPreviousWrite = _writer == null;
+			_writer ??= new StreamWriter(_stream, new UTF8Encoding(true), leaveOpen: true);
+			// TODO: verify that Position is available
+			if (_stream.Position == 0)
+			{
+				await _writer.WriteLineAsync(Resources.CoordinatesOverride.SeeReadme);
+				if (SourceUrl != null)
+					await _writer.WriteLineAsync(Resources.CoordinatesOverride.XmlUrlOption(SourceUrl));
+				await _writer.WriteLineAsync(Resources.CoordinatesOverride.BatchSizeOption(BatchSize));
+				await _writer.WriteLineAsync(Resources.CoordinatesOverride.Headings);
+				await _writer.FlushAsync();
+			}
+			else if (hasNoPreviousWrite) await _writer.WriteLineAsync();
+			if (!_pendingChanges.ContainsKey(GetModificationIdentifier(entry)!))
+				await _writer.WriteLineAsync(entry.ToString());
+		}
+
+		/// <summary>Disposes the underlying stream, reader, writer, and semaphore.</summary>
 		public void Dispose()
 		{
 			_reader.Dispose();
+			_writer?.Dispose();
 			_stream.Dispose();
-			_semaphore.Dispose();
+			_readSemaphore.Dispose();
+			_writeSemaphore.Dispose();
 		}
 
 		/// <summary>Gets the modification identifier for the given entry.</summary>
@@ -188,7 +222,7 @@ namespace WylieYYYY.GetinfoCSharp.IO
 		/// <exception cref="FileFormatException"/>
 		private async IAsyncEnumerator<string[]> ReadValidLines(bool forEntries, int minimumFieldCount)
 		{
-			using SemaphoreHandle semaphoreHandle = await _semaphore.WaitHandle();
+			using SemaphoreHandle semaphoreHandle = await _readSemaphore.WaitHandle();
 			try { if ((_overreadLine ??= await _reader.ReadLineAsync()) == null) yield break; }
 			catch (ArgumentOutOfRangeException ex)
 			{ throw new FileFormatException(Resources.Exception.LineTooLong, ex); }
@@ -198,9 +232,9 @@ namespace WylieYYYY.GetinfoCSharp.IO
 			Func<string, bool> IsValid = forEntries ? IsEntryOrComment : IsConfigurationOrComment;
 			Func<string, bool> IsComment = forEntries ? IsConfigurationOrComment : IsEntryOrComment;
 			// lines starting with tab character are not valid
-			while (IsValid((fields = _overreadLine!.Split('\t'))[0]))
+			while (IsValid((fields = _overreadLine!.Split('\t'))[0]) || _overreadLine == string.Empty)
 			{
-				if (!IsComment(fields[0]))
+				if (!IsComment(fields[0]) && _overreadLine != string.Empty)
 				{
 					if (fields.Length < minimumFieldCount)
 						throw new FileFormatException(/*HACK*/);

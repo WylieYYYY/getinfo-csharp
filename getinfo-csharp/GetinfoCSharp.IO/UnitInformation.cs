@@ -2,7 +2,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
 
@@ -21,31 +20,16 @@ namespace WylieYYYY.GetinfoCSharp.IO
 		public static Vector2 MissingCoordinates { get => new Vector2(0, -91); }
 		/// <summary>Coordinates of the unit.</summary>
 		public Vector2 Coordinates;
-		/// <summary>Attribute keys of the entry.</summary>
-		public HashSet<string> AttributeKeys => _attributeKeys ??= _attributes.Keys.ToHashSet();
 
 		private readonly Dictionary<string, string?> _attributes;
-		private HashSet<string>? _attributeKeys = null;
-		private readonly bool _isPartial;
 
 		/// <summary>Initializes a unit information entry.</summary>
 		/// <param name="attributes">Attributes that contain information of the unit.</param>
 		/// <param name="coordinates"><see cref="Coordinates"/></param>
-		public UnitInformationEntry(Dictionary<string, string?> attributes, Vector2 coordinates) :
-				this(attributes, coordinates, false) {}
-		// TODO: fix the document of isPartial after storage class integration
-		/// <summary>Initializes a unit information entry.</summary>
-		/// <param name="attributes">Attributes that contain information of the unit.</param>
-		/// <param name="coordinates"><see cref="Coordinates"/></param>
-		/// <param name="isPartial">
-		///  If true, missing attribute keys will not cause an error to be thrown.
-		/// </param>
-		internal UnitInformationEntry(Dictionary<string, string?> attributes, Vector2 coordinates,
-				bool isPartial)
+		public UnitInformationEntry(Dictionary<string, string?> attributes, Vector2 coordinates)
 		{
 			_attributes = attributes;
 			Coordinates = coordinates;
-			_isPartial = isPartial;
 		}
 
 		/// <summary>Locates this entry using the English address attribute.</summary>

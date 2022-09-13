@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Xml.Linq;
@@ -26,7 +25,8 @@ namespace getinfo_csharp
 			Console.Write(Resources.Messages.InputCommand(CoordinatesOverridePath, UnitInformationPath));
 			string serviceUrl = Console.ReadLine() ?? string.Empty;
 			string executablePath = Path.GetDirectoryName(typeof(Program).Assembly.Location)!;
-			(serviceUrl, CoordinatesOverrideStream overrideStream) = await GetOverrideStream(serviceUrl, executablePath);
+			using CoordinatesOverrideStream overrideStream = await GetOverrideStream(executablePath);
+			if (serviceUrl == string.Empty) serviceUrl = overrideStream.SourceUrl!;
 			if (serviceUrl.ToLower() == "amend")
 			{
 				await Amender.AmendUnitInfo(overrideStream, executablePath);
@@ -50,26 +50,12 @@ namespace getinfo_csharp
 		public static readonly HttpClient client = new HttpClient();
 
 		// create or read address override table
-		public static int batchSize = 50;
-		private static async Task<(string, CoordinatesOverrideStream)> GetOverrideStream(string xmlUrl,
-			string executablePath)
+		private static async Task<CoordinatesOverrideStream> GetOverrideStream(string executablePath)
 		{
-			if (!File.Exists(executablePath + "/../override.csv"))
-			{
-				FileStream fileStream = new(executablePath + "/../override.csv", FileMode.Create);
-				Console.WriteLine("Creating address override table");
-				// UTF8 BOM for Excel
-				StreamWriter stream = new StreamWriter(fileStream, new UTF8Encoding(true));
-				stream.WriteLine(Resources.CoordinatesOverride.SeeReadme);
-				stream.WriteLine(Resources.CoordinatesOverride.Headings);
-				stream.WriteLine(Resources.CoordinatesOverride.XmlUrlOption(xmlUrl));
-				stream.Close();
-				return (xmlUrl, new CoordinatesOverrideStream(fileStream));
-			}
 			Console.WriteLine("Reading address override table");
 			// Console.WriteLine("Requesting override table");
 			CoordinatesOverrideStream overrideStream = new(new FileStream(
-					executablePath + "/../override.csv", FileMode.Open));
+					executablePath + "/../override.csv", FileMode.OpenOrCreate));
 			await overrideStream.ReadConfigurations();
 			NetworkUtility.AddressLocator locator = address => AlsLocationInfo.FromAddress(
 					address, false, client);
@@ -79,13 +65,13 @@ namespace getinfo_csharp
 				// TimeSpan estimatedTimeLeft = estimatePacer.Step();
 				Console.WriteLine(Resources.Messages.Located(identifiers.Current.ToString()!));
 				// Console.WriteLine(Resources.Messages.TimeEstimation(estimatedTimeLeft));
-			return (xmlUrl == string.Empty ? overrideStream.SourceUrl! : xmlUrl, overrideStream);
+			// Console.WriteLine("Creating address override table");
+			return overrideStream;
 		}
 
 		private static async IAsyncEnumerator<UnitInformationEntry> ParseAndRequestUnit(XDocument root,
 				XNamespace xmlnsUrl, CoordinatesOverrideStream overrides, string executablePath)
 		{
-			using StreamWriter overrideStream = new StreamWriter(executablePath + "/../override.csv", true, Encoding.UTF8);
 			IEnumerator<UnitInformationEntry> GetEntriesFromXml()
 			{
 				foreach (XElement unit in root.Descendants(xmlnsUrl + "serviceUnit"))
@@ -108,8 +94,7 @@ namespace getinfo_csharp
 				if (locatedEntries.Current.Coordinates == UnitInformationEntry.MissingCoordinates)
 				{
 					string address = locatedEntries.Current["addressTChinese"];
-					if (!overrides.PendingChanges.ContainsKey(name))
-						overrideStream.WriteLine(new CoordinatesOverrideEntry(name, address));
+					await overrides.WriteEntry(new CoordinatesOverrideEntry(name, address));
 					Console.WriteLine(Resources.Messages.FailedToLocate(name));
 				}
 				else Console.WriteLine(Resources.Messages.Located(name));
