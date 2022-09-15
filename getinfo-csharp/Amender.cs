@@ -57,24 +57,12 @@ namespace getinfo_csharp
 		public static async Task PatchUnitInfo(IAsyncEnumerator<UnitInformationEntry> entries,
 				string executablePath)
 		{
-			Console.WriteLine("Reordering data by decreasing latitude");
-			SortedSet<UnitInformationEntry> entrySet = new();
-			while (await entries.MoveNextAsync()) entrySet.Add(entries.Current);
+			// Console.WriteLine("Reordering data by decreasing latitude");
 			// uses JS to avoid CORS
 			Console.WriteLine("Writing langlat and dumping XML as JS to unitinfo.js");
-			using StreamWriter stream = new(executablePath + "/../scripts/unitinfo.js", false, Encoding.UTF8);
-			stream.Write("var longlat = ");
-			stream.Write(JsonSerializer.Serialize(entrySet.Select(
-					c => new float[] { c.Coordinates.X, c.Coordinates.Y })));
-			stream.Write(";\nvar unitinfo = [");
-			string[] attributeKeys = UnitInformationEntry.SharedAttributeKeys;
-			stream.Write(JsonSerializer.Serialize<string[]>(attributeKeys));
-			foreach (UnitInformationEntry entry in entrySet)
-			{
-				stream.Write(',');
-				stream.Write(JsonSerializer.Serialize(attributeKeys.Select(k => entry[k])));
-			}
-			stream.Write("];");
+			UnitInformationStream informationStream = new(mode =>
+					new FileStream(executablePath + "/../scripts/unitinfo.js", mode));
+			await informationStream.WriteEntries(entries);
 			Console.WriteLine("Finished unitinfo.js");
 		}
 	}

@@ -34,6 +34,12 @@
     <value>[Traditional Chinese Name]	[Proposed Address]	[Longtitude Offset]	[Latitude Offset]	[Registered Address]</value>
   </data>
   <!-- Exception Message -->
+  <data name="Exception_CoordinatesValueNotFloat" xml:space="preserve">
+    <value>Expected coordinates value to be a number, got "{0}" instead.</value>
+  </data>
+  <data name="Exception_IncorrectFieldCount" xml:space="preserve">
+    <value>Expected {0} fields, got {1} fields instead.</value>
+  </data>
   <data name="Exception_LineTooLong" xml:space="preserve">
     <value>A line is abnormally long and cannot be read.</value>
   </data>

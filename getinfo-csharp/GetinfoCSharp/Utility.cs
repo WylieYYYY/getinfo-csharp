@@ -13,6 +13,8 @@ namespace WylieYYYY.GetinfoCSharp
 		#pragma warning disable CS1998
 		/// <summary>Gets an empty asynchronous enumerator of a given value type.</summary>
 		/// <returns>Empty asynchronous enumerator.</returns>
+		// TODO: remove this later
+		[Obsolete("This will be removed later.", true)]
 		public static async IAsyncEnumerator<TValue> EmptyAsyncEnumerator<TValue>() { yield break; }
 		#pragma warning restore CS1998
 		/// <summary>

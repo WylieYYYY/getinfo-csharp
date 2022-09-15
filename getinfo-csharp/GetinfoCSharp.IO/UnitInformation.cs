@@ -2,7 +2,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Numerics;
+using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 using WylieYYYY.GetinfoCSharp.Net;
@@ -56,12 +60,14 @@ namespace WylieYYYY.GetinfoCSharp.IO
 		/// <param name="key">Key of the attribute.</param>
 		/// <returns>Value of the attribute.</returns>
 		/// <exception cref="KeyNotFoundException"/>
+		// FIXME: exception handling for this method
 		public string? this[string key]
 		{
 			get
 			{
 				try { return _attributes[key]; }
-				catch (KeyNotFoundException ex) { throw new KeyNotFoundException("" /*HACK*/, ex); }
+				catch (KeyNotFoundException ex)
+				{ throw new KeyNotFoundException(Resources.Exception.EntryAttributeKeyNotFound(key), ex); }
 			}
 			set
 			{
@@ -80,9 +86,40 @@ namespace WylieYYYY.GetinfoCSharp.IO
 		/// <exception cref="ArgumentNullException"/>
 		public int CompareTo(UnitInformationEntry? other)
 		{
-			if (other == null) throw new ArgumentNullException(/*HACK*/);
+			if (other == null) throw new ArgumentNullException(nameof(other));
 			int order = other.Coordinates.Y.CompareTo(Coordinates.Y);
 			return order == 0 ? 1 : order;
+		}
+	}
+
+	/// <summary>Stream for reading and writing unit information file.</summary>
+	public class UnitInformationStream
+	{
+		private StreamBuilder _builder;
+
+		/// <summary>Initializes a unit information stream.</summary>
+		/// <param name="builder">Builder for the backing stream, must also be seekable.</param>
+		public UnitInformationStream(StreamBuilder builder) => _builder = builder;
+
+		/// <summary>Write entries to the backing stream constructed by the builder.</summary>
+		/// <param name="entries">Entries to be written.</param>
+		/// <exception cref="IOException"/>
+		public async Task WriteEntries(IAsyncEnumerator<UnitInformationEntry> entries)
+		{
+			SortedSet<UnitInformationEntry> sortedEntries = new();
+			while (await entries.MoveNextAsync()) sortedEntries.Add(entries.Current);
+			using StreamWriter writer = new(_builder(FileMode.OpenOrCreate), new UTF8Encoding(false));
+			await writer.WriteAsync(Resources.UnitInformation.VariableDefinitionPreamble("longlat"));
+			await writer.WriteLineAsync(JsonSerializer.Serialize(sortedEntries.Select(
+					entry => new float[] { entry.Coordinates.X, entry.Coordinates.Y })) + ';');
+			await writer.WriteAsync(Resources.UnitInformation.VariableDefinitionPreamble("unitinfo"));
+			string[] attributeKeys = UnitInformationEntry.SharedAttributeKeys!;
+			IEnumerable<IEnumerable<string?>> compiledAttributes = sortedEntries
+					.Select(entry => attributeKeys.Select(key => entry[key]));
+			await writer.WriteAsync(JsonSerializer.Serialize(compiledAttributes.Prepend(attributeKeys)));
+			await writer.WriteLineAsync(';');
+			// TODO: verify that the stream is seekable
+			writer.BaseStream.SetLength(writer.BaseStream.Position);
 		}
 	}
 }

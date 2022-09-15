@@ -6,11 +6,9 @@ using System.Xml.Linq;
 
 namespace WylieYYYY.GetinfoCSharp.Text.Xml
 {
-	// TODO: doc
+	/// <summary>Utility for convenient XML document traversal.</summary>
 	public static class XmlUtility
 	{
-		public static XName GetNamespacedName(this XDocument document, string name) =>
-				document.Root.Name.Namespace + name;
 		/// <summary>
 		///  Gets the only descendant of <paramref name="container"/> that is selected by
 		///  <paramref name="name"/>.

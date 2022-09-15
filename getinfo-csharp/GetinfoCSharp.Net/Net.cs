@@ -78,7 +78,8 @@ namespace WylieYYYY.GetinfoCSharp.Net
 			// offset by a small amount to prevent overlapping
 			Func<string, float> getCoordinate = name => {
 				string namedElementValue = locatedEntry.OnlyDescendant(name).Value;
-				if (!float.TryParse(namedElementValue, out float value)) throw new XmlException(/*HACK*/);
+				if (!float.TryParse(namedElementValue, out float value))
+					throw new XmlException(Resources.Exception.CoordinatesValueNotFloat(namedElementValue));
 				return value + _random.Next(-50, 50) / 1000000;
 			};
 			Vector2 coordinates = new(getCoordinate("Longitude"), getCoordinate("Latitude"));

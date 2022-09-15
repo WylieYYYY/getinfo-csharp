@@ -37,9 +37,10 @@ namespace WylieYYYY.GetinfoCSharp.IO
 		public CoordinatesOverrideEntry(string traditionalChineseName, string registeredAddress,
 				string? proposedAddress = null, Vector2 coordinatesOffset = default)
 		{
-			this.TraditionalChineseName = traditionalChineseName.ToUpperInvariant();
-			this.RegisteredAddress = registeredAddress;
-			this.ProposedAddress = proposedAddress == NoOverridePlaceholder ? null : proposedAddress;
+			this.TraditionalChineseName = traditionalChineseName.ToUpperInvariant().Replace("\t", "");
+			this.RegisteredAddress = registeredAddress.Replace("\t", "");
+			this.ProposedAddress = proposedAddress == NoOverridePlaceholder ?
+					null : proposedAddress?.Replace("\t", "");
 			this.CoordinatesOffset = coordinatesOffset;
 		}
 
@@ -70,14 +71,15 @@ namespace WylieYYYY.GetinfoCSharp.IO
 		{
 			entry["addressOverride"] = ProposedAddress;
 			if (ProposedAddress == null) return;
-			if (OverridingCoordinates == null) throw new InvalidOperationException(/*HACK*/);
+			if (OverridingCoordinates == null)
+				throw new InvalidOperationException(Resources.Exception.OverrideBeforeLocate);
 			entry.Coordinates = (Vector2)OverridingCoordinates;
 		}
 
 		/// <summary>Serializes the entry into a tab separated form.</summary>
 		/// <returns>Serialized form of the entry.</returns>
 		public override string ToString() => string.Join('\t',
-				TraditionalChineseName.ToUpperInvariant(), ProposedAddress ?? NoOverridePlaceholder,
+				TraditionalChineseName, ProposedAddress ?? NoOverridePlaceholder,
 				CoordinatesOffset.X, CoordinatesOffset.Y, RegisteredAddress);
 	}
 
@@ -128,7 +130,7 @@ namespace WylieYYYY.GetinfoCSharp.IO
 		///  Locator for <see cref="CoordinatesOverrideEntry.Locate(NetworkUtility.AddressLocator)"/>.
 		/// </param>
 		/// <returns>Asynchronous enumerator of located entries' stringable identifiers.</returns>
-		/// <exception cref="FileFormatException">/*TODO: doc*/</exception>
+		/// <exception cref="FileFormatException"/>
 		public async IAsyncEnumerator<object> ReadLocatedEntries(NetworkUtility.AddressLocator locator)
 		{
 			IAsyncEnumerator<CoordinatesOverrideEntry> entries = ReadEntries()
@@ -136,8 +138,9 @@ namespace WylieYYYY.GetinfoCSharp.IO
 			while (await entries.MoveNextAsync())
 			{
 				object identifier = GetModificationIdentifier(entries.Current)!;
+				// retain the old replacing behaviour, may change in a later version
 				if (!_pendingChanges.TryAdd(identifier, entries.Current))
-					throw new FileFormatException(/*HACK*/);
+					_pendingChanges[identifier] = entries.Current;
 				if (entries.Current.ProposedAddress == null) continue;
 				yield return identifier;
 			}
@@ -172,7 +175,8 @@ namespace WylieYYYY.GetinfoCSharp.IO
 			// reading is prohibited after writing has commence
 			if (_readSemaphore.CurrentCount != 0) await _readSemaphore.WaitAsync();
 			using SemaphoreHandle semaphoreHandle = await _writeSemaphore.WaitHandle();
-			if (_stream.ReadByte() != -1) throw new InvalidOperationException(/*HACK*/);
+			if (_stream.ReadByte() != -1)
+				throw new InvalidOperationException(Resources.Exception.WriteBeforeReadAll);
 			bool hasNoPreviousWrite = _writer == null;
 			_writer ??= new StreamWriter(_stream, new UTF8Encoding(true), leaveOpen: true);
 			// TODO: verify that Position is available
@@ -208,15 +212,16 @@ namespace WylieYYYY.GetinfoCSharp.IO
 		/// </remarks>
 		/// <param name="entry">Entry to get removal identifier for.</param>
 		/// <returns>
-		///  Identifier to tag entry for modification,
-		///  null if no modification should take place.
+		///  Identifier to tag entry for modification, null if no modification should take place.
 		/// </returns>
 		/// <exception cref="ArgumentException">If the type of the entry is not allowed.</exception>
 		internal static object? GetModificationIdentifier(object? entry) => entry switch
 		{
-			UnitInformationEntry castedEntry => castedEntry["nameTChinese"]?.ToUpperInvariant(),
+			UnitInformationEntry castedEntry => castedEntry["nameTChinese"]?.ToUpperInvariant()
+					.Replace("\t", ""),
 			CoordinatesOverrideEntry castedEntry => castedEntry.TraditionalChineseName,
-			_ => throw new ArgumentException(nameof(entry)/*HACK*/),
+			_ => throw new ArgumentException(Resources.Exception.EntryTypeNotSupported(
+					entry?.GetType()), nameof(entry)),
 		};
 
 		/// <exception cref="FileFormatException"/>
@@ -237,7 +242,10 @@ namespace WylieYYYY.GetinfoCSharp.IO
 				if (!IsComment(fields[0]) && _overreadLine != string.Empty)
 				{
 					if (fields.Length < minimumFieldCount)
-						throw new FileFormatException(/*HACK*/);
+					{
+						throw new FileFormatException(Resources.Exception.IncorrectFieldCount(
+								minimumFieldCount, fields.Length));
+					}
 					yield return fields;
 				}
 				try { if ((_overreadLine = await _reader.ReadLineAsync()) == null) yield break; }
@@ -256,9 +264,10 @@ namespace WylieYYYY.GetinfoCSharp.IO
 			{
 				string[] fields = fieldsEnumerator.Current;
 				Vector2 coordinates = new();
-				if (!float.TryParse(fields[2], out coordinates.X) ||
-						!float.TryParse(fields[3], out coordinates.Y))
-					throw new FileFormatException(/*HACK*/);
+				if (!float.TryParse(fields[2], out coordinates.X))
+					throw new FileFormatException(Resources.Exception.CoordinatesValueNotFloat(fields[2]));
+				if (!float.TryParse(fields[3], out coordinates.Y))
+					throw new FileFormatException(Resources.Exception.CoordinatesValueNotFloat(fields[3]));
 				yield return new CoordinatesOverrideEntry(fields[0], fields[4], fields[1], coordinates);
 			}
 		}

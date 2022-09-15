@@ -39,12 +39,28 @@ namespace WylieYYYY.GetinfoCSharp
 			public static string BatchSizeOption(int size) => $"batch_size\t{size}";
 		}
 
+		public static class UnitInformation
+		{
+			public static string VariableDefinitionPreamble(string name) => $"var {name} = ";
+		}
+
 		public static class Exception
 		{
+			public static string CoordinatesValueNotFloat(string gotValue) =>
+					string.Format(_resourceManager.GetString("Exception_CoordinatesValueNotFloat")!, gotValue);
+			public static string IncorrectFieldCount(int expectedCount, int gotCount) =>
+					string.Format(_resourceManager.GetString("Exception_IncorrectFieldCount")!, expectedCount, gotCount);
 			public static string LineTooLong =>
 					_resourceManager.GetString("Exception_LineTooLong")!;
 			public static string NotPositiveInteger(string paramName) =>
 					string.Format(_resourceManager.GetString("Exception_NotPositiveInteger")!, paramName);
+
+			public static string EntryAttributeKeyNotFound(string keyName) =>
+					$@"Entry attribute with key ""{keyName}"" not found.";
+			public static string EntryTypeNotSupported(Type? type) =>
+					$"Entry of type {type?.FullName} is not supported.";
+			public const string OverrideBeforeLocate = "Entry must be located before being used for overriding.";
+			public const string WriteBeforeReadAll = "Writing before reading until the end is not supported.";
 		}
 	}
 }

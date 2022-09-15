@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 
@@ -36,11 +35,9 @@ namespace getinfo_csharp
 			}
 			Console.WriteLine("XML request sent");
 			// "XML request for \"{xmlUrl}\" HTTP error"
-			XDocument serviceRoot = XDocument.Parse(await NetworkUtility.RequestTwiceOrBail(client, serviceUrl));
-			XNamespace xmlnsUrl = Regex.Match(serviceRoot.Document.Root.Name.ToString(),
-				@"(?<={)(https?://[^}]*)(?=})").Value;
+			XDocument serviceRoot = XDocument.Parse(await client.RequestTwiceOrBail(serviceUrl));
 			Console.WriteLine("Parsing and requesting for geospatial information");
-			await Amender.PatchUnitInfo(overrideStream.OverrideEntries(ParseAndRequestUnit(serviceRoot, xmlnsUrl,
+			await Amender.PatchUnitInfo(overrideStream.OverrideEntries(ParseAndRequestUnit(serviceRoot,
 					overrideStream, executablePath)), executablePath);
 			// Console.WriteLine("Applying override table");
 			Console.WriteLine(Resources.Messages.ExitSuccess);
@@ -70,8 +67,9 @@ namespace getinfo_csharp
 		}
 
 		private static async IAsyncEnumerator<UnitInformationEntry> ParseAndRequestUnit(XDocument root,
-				XNamespace xmlnsUrl, CoordinatesOverrideStream overrides, string executablePath)
+				CoordinatesOverrideStream overrides, string executablePath)
 		{
+			XNamespace xmlnsUrl = root.Root.GetDefaultNamespace();
 			IEnumerator<UnitInformationEntry> GetEntriesFromXml()
 			{
 				foreach (XElement unit in root.Descendants(xmlnsUrl + "serviceUnit"))
