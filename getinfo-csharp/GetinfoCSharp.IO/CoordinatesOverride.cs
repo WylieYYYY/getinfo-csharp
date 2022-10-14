@@ -14,7 +14,7 @@ using WylieYYYY.GetinfoCSharp.Net;
 namespace WylieYYYY.GetinfoCSharp.IO
 {
 	/// <summary>Represents an entry within the coordinates override file.</summary>
-	public class CoordinatesOverrideEntry
+	public class CoordinatesOverrideEntry : LocatableEntry
 	{
 		/// <summary>Traditional Chinese name as identifier.</summary>
 		public readonly string TraditionalChineseName;
@@ -26,6 +26,8 @@ namespace WylieYYYY.GetinfoCSharp.IO
 		public readonly string RegisteredAddress;
 		/// <summary>Calculated coordinates for overriding, null if not yet located.</summary>
 		public Vector2? OverridingCoordinates { get; private set; } = null;
+		/// <summary>Locate status of the entry, checks <see cref="OverridingCoordinates"/>.</summary>
+		public bool Located => OverridingCoordinates != null;
 
 		private const string NoOverridePlaceholder = "[NO OVERRIDE]";
 
@@ -55,7 +57,7 @@ namespace WylieYYYY.GetinfoCSharp.IO
 			if (locationInfo == null)
 			{
 				throw new FileFormatException(Resources.Messages.FailedToLocate(
-						CoordinatesOverrideStream.GetModificationIdentifier(this)!.ToString()!));
+						((LocatableEntry)this).Identifier!.ToString()!));
 			}
 			OverridingCoordinates = locationInfo.Coordinates + CoordinatesOffset;
 			return this;
@@ -129,21 +131,26 @@ namespace WylieYYYY.GetinfoCSharp.IO
 		/// <param name="locator">
 		///  Locator for <see cref="CoordinatesOverrideEntry.Locate(NetworkUtility.AddressLocator)"/>.
 		/// </param>
-		/// <returns>Asynchronous enumerator of located entries' stringable identifiers.</returns>
+		/// <param name="locatableObserver">Observer for the reading and locating of entries.</param>
 		/// <exception cref="FileFormatException"/>
-		public async IAsyncEnumerator<object> ReadLocatedEntries(NetworkUtility.AddressLocator locator)
+		public async Task ReadLocatedEntries(NetworkUtility.AddressLocator locator,
+				IObserver<LocatableEntry> locatableObserver)
 		{
 			IAsyncEnumerator<CoordinatesOverrideEntry> entries = ReadEntries()
 					.ChunkComplete(entry => entry.Locate(locator), BatchSize);
 			while (await entries.MoveNextAsync())
 			{
-				object identifier = GetModificationIdentifier(entries.Current)!;
 				// retain the old replacing behaviour, may change in a later version
-				if (!_pendingChanges.TryAdd(identifier, entries.Current))
-					_pendingChanges[identifier] = entries.Current;
-				if (entries.Current.ProposedAddress == null) continue;
-				yield return identifier;
+				if (!_pendingChanges.TryAdd(((LocatableEntry)entries.Current).Identifier!,
+						entries.Current))
+					_pendingChanges[((LocatableEntry)entries.Current).Identifier!] = entries.Current;
+				// TODO: special next status for non-overriding entries
+				if (entries.Current.ProposedAddress == null ||
+						entries.Current.OverridingCoordinates != null)
+					locatableObserver.OnNext(entries.Current);
+				else locatableObserver.OnError(new LocatableEntry.UnlocatableException(entries.Current));
 			}
+			locatableObserver.OnCompleted();
 		}
 
 		/// <summary>Overrides entries with matching modification identifier.</summary>
@@ -154,7 +161,7 @@ namespace WylieYYYY.GetinfoCSharp.IO
 		{
 			while (await entries.MoveNextAsync())
 			{
-				object? modificationIdentifier = GetModificationIdentifier(entries.Current);
+				object? modificationIdentifier = ((LocatableEntry)entries.Current).Identifier;
 				if (modificationIdentifier != null && _pendingChanges.ContainsKey(modificationIdentifier))
 					_pendingChanges[modificationIdentifier].OverrideEntry(entries.Current);
 				yield return entries.Current;
@@ -190,7 +197,7 @@ namespace WylieYYYY.GetinfoCSharp.IO
 				await _writer.FlushAsync();
 			}
 			else if (hasNoPreviousWrite) await _writer.WriteLineAsync();
-			if (!_pendingChanges.ContainsKey(GetModificationIdentifier(entry)!))
+			if (!_pendingChanges.ContainsKey(((LocatableEntry)entry).Identifier!))
 				await _writer.WriteLineAsync(entry.ToString());
 		}
 

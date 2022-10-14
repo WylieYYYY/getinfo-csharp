@@ -21,6 +21,8 @@ namespace WylieYYYY.GetinfoCSharp
 					string.Format(_resourceManager.GetString("Message_FailedToLocate")!, unitName);
 			public static string Located(string unitName) =>
 					string.Format(_resourceManager.GetString("Message_Located")!, unitName);
+			public static string NoTimeEstimation =>
+					_resourceManager.GetString("Message_NoTimeEstimation")!;
 			public static string TimeEstimation(TimeSpan estimatedTimeLeft) =>
 					string.Format(_resourceManager.GetString("Message_TimeEstimation")!, estimatedTimeLeft);
 			public static string ExitSuccess =>
@@ -55,6 +57,7 @@ namespace WylieYYYY.GetinfoCSharp
 			public static string NotPositiveInteger(string paramName) =>
 					string.Format(_resourceManager.GetString("Exception_NotPositiveInteger")!, paramName);
 
+			public const string AttributeKeysNotInitialized = "Attribute keys are not initialized, writing must start after reading the first entry.";
 			public static string EntryAttributeKeyNotFound(string keyName) =>
 					$@"Entry attribute with key ""{keyName}"" not found.";
 			public static string EntryTypeNotSupported(Type? type) =>

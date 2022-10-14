@@ -16,6 +16,9 @@
     <data name="Message_Located" xml:space="preserve">
       <value>Located {0} successfully.</value>
     </data>
+    <data name="Message_NoTimeEstimation" xml:space="preserve">
+      <value>[Time estimation is not available]</value>
+    </data>
     <data name="Message_TimeEstimation" xml:space="preserve">
       <value>[Estimated time left: {0}]</value>
     </data>

@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
-using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -41,14 +40,14 @@ namespace getinfo_csharp
 			}
 			JsonElement longlatElement = JsonDocument.Parse(longlatJson).RootElement;
 			JsonElement unitinfoElement = JsonDocument.Parse(unitinfoJson).RootElement;
-			UnitInformationEntry.SharedAttributeKeys = unitinfoElement[0].Deserialize<string[]>();
+			UnitInformationStream.SharedAttributeKeys = unitinfoElement[0].Deserialize<string[]>();
 			IEnumerable<string?[]> unitList = unitinfoElement.EnumerateArray().Skip(1).Select(e => e.Deserialize<string?[]>());
 			IEnumerable<Vector2> longlatList = longlatElement.EnumerateArray()
 					.Select(e => e.Deserialize<float[]>()).Select(l => new Vector2(l[0], l[1]));
 			foreach ((string?[] unitinfo, Vector2 longlat) in unitList.Zip(longlatList))
 			{
 				Dictionary<string, string?> attributes = new();
-				foreach ((string key, string? value) in UnitInformationEntry.SharedAttributeKeys.Zip(unitinfo))
+				foreach ((string key, string? value) in UnitInformationStream.SharedAttributeKeys.Zip(unitinfo))
 					attributes.Add(key, value);
 				yield return new UnitInformationEntry(attributes, longlat);
 			}

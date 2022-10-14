@@ -3,10 +3,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
-using System.Xml.Linq;
 
 using WylieYYYY.GetinfoCSharp;
 using WylieYYYY.GetinfoCSharp.IO;
@@ -35,10 +33,9 @@ namespace getinfo_csharp
 			}
 			Console.WriteLine("XML request sent");
 			// "XML request for \"{xmlUrl}\" HTTP error"
-			XDocument serviceRoot = XDocument.Parse(await client.RequestTwiceOrBail(serviceUrl));
 			Console.WriteLine("Parsing and requesting for geospatial information");
-			await Amender.PatchUnitInfo(overrideStream.OverrideEntries(ParseAndRequestUnit(serviceRoot,
-					overrideStream, executablePath)), executablePath);
+			await Amender.PatchUnitInfo(overrideStream.OverrideEntries(ParseAndRequestUnit(serviceUrl,
+					overrideStream, executablePath, client)), executablePath);
 			// Console.WriteLine("Applying override table");
 			Console.WriteLine(Resources.Messages.ExitSuccess);
 			Console.ReadLine();
@@ -56,35 +53,19 @@ namespace getinfo_csharp
 			await overrideStream.ReadConfigurations();
 			NetworkUtility.AddressLocator locator = address => AlsLocationInfo.FromAddress(
 					address, false, client);
-			IAsyncEnumerator<object> identifiers = overrideStream.ReadLocatedEntries(locator);
-			// Pacer estimatePacer = new(overrides.Count);
-			while (await identifiers.MoveNextAsync())
-				// TimeSpan estimatedTimeLeft = estimatePacer.Step();
-				Console.WriteLine(Resources.Messages.Located(identifiers.Current.ToString()!));
-				// Console.WriteLine(Resources.Messages.TimeEstimation(estimatedTimeLeft));
+			await overrideStream.ReadLocatedEntries(locator, new LocatingObserver());
 			// Console.WriteLine("Creating address override table");
 			return overrideStream;
 		}
 
-		private static async IAsyncEnumerator<UnitInformationEntry> ParseAndRequestUnit(XDocument root,
-				CoordinatesOverrideStream overrides, string executablePath)
+		private static async IAsyncEnumerator<UnitInformationEntry> ParseAndRequestUnit(string url,
+				CoordinatesOverrideStream overrides, string executablePath, HttpClient client)
 		{
-			XNamespace xmlnsUrl = root.Root.GetDefaultNamespace();
-			IEnumerator<UnitInformationEntry> GetEntriesFromXml()
-			{
-				foreach (XElement unit in root.Descendants(xmlnsUrl + "serviceUnit"))
-				{
-					Dictionary<string, string?> propDict = new();
-					foreach (XElement prop in unit.Descendants())
-						propDict.Add(prop.Name.LocalName, prop.Value);
-					propDict.Add("addressOverride", null);
-					UnitInformationEntry.SharedAttributeKeys = propDict.Keys.ToArray();
-					yield return new UnitInformationEntry(propDict, UnitInformationEntry.MissingCoordinates);
-				}
-			}
+			UnitInformationStream informationStream = new(mode => throw new Exception("placeholder"));
+			IAsyncEnumerator<UnitInformationEntry> unlocatedEntries = informationStream.ReadEntriesFromUrl(url, client);
 			NetworkUtility.AddressLocator locator = address => AlsLocationInfo.FromAddress(
 					address, true, client);
-			IAsyncEnumerator<UnitInformationEntry> locatedEntries = GetEntriesFromXml().ToAsyncEnumerator()
+			IAsyncEnumerator<UnitInformationEntry> locatedEntries = unlocatedEntries
 					.ChunkComplete(entry => entry.Locate(locator), overrides.BatchSize);
 			while (await locatedEntries.MoveNextAsync())
 			{

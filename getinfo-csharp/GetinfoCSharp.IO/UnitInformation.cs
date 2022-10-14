@@ -4,26 +4,27 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Numerics;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using System.Xml;
+using System.Xml.Linq;
 
 using WylieYYYY.GetinfoCSharp.Net;
 
 namespace WylieYYYY.GetinfoCSharp.IO
 {
 	/// <summary>Represents an entry within the unit information file.</summary>
-	public class UnitInformationEntry : IComparable<UnitInformationEntry>
+	public class UnitInformationEntry : LocatableEntry, IComparable<UnitInformationEntry>
 	{
-		// TODO: remove shared attribute keys after storage class integration
-		[System.Obsolete("Temporary keys container before storage class integration.")]
-		public static string[]? SharedAttributeKeys = null;
-
 		/// <summary>Coordinates to use when the entry currently does not have coordinates.</summary>
 		public static Vector2 MissingCoordinates { get => new Vector2(0, -91); }
 		/// <summary>Coordinates of the unit.</summary>
-		public Vector2 Coordinates;
+		public Vector2 Coordinates { get; internal set; }
+		/// <summary>Locate status of the entry, checks <see cref="Coordinates"/>.</summary>
+		public bool Located => Coordinates != MissingCoordinates;
 
 		private readonly Dictionary<string, string?> _attributes;
 
@@ -95,25 +96,62 @@ namespace WylieYYYY.GetinfoCSharp.IO
 	/// <summary>Stream for reading and writing unit information file.</summary>
 	public class UnitInformationStream
 	{
-		private StreamBuilder _builder;
+		// TODO: remove shared attribute keys after storage class integration
+		[System.Obsolete("Temporary keys container before storage class integration.")]
+		public static string[]? SharedAttributeKeys = null;
+		private readonly StreamBuilder _builder;
 
 		/// <summary>Initializes a unit information stream.</summary>
 		/// <param name="builder">Builder for the backing stream, must also be seekable.</param>
 		public UnitInformationStream(StreamBuilder builder) => _builder = builder;
 
-		/// <summary>Write entries to the backing stream constructed by the builder.</summary>
+		/// <summary>Reads entries that are streamed from an HTTP URL.</summary>
+		/// <param name="url">URL for requesting entries.</param>
+		/// <param name="client">Client for sending requests.</param>
+		/// <returns>Asynchronous enumerator of entries.</returns>
+		/// <exception cref="XmlException">
+		///  If the response is not a valid XML document, or if the XML is not in the expected format.
+		/// </exception>
+		/// <exception cref="HttpRequestException"/>
+		public async IAsyncEnumerator<UnitInformationEntry> ReadEntriesFromUrl(string url,
+				HttpClient client)
+		{
+			// TODO: error handling for TaskCanceledException
+			using Stream stream = await Utility.AttemptRetry<Stream, Exception>(
+					() => client.GetStreamAsync(url), 2, () => Task.Delay(TimeSpan.FromMilliseconds(100)),
+					exception => exception is HttpRequestException || exception is TaskCanceledException);
+			// TODO: use proper cancellation token
+			XDocument document = await XDocument.LoadAsync(stream, LoadOptions.None, default);
+			XElement root = document.Root ?? throw new XmlException(/*HACK*/);
+			foreach (XElement unitElement in root.Descendants(
+					root.GetDefaultNamespace() + "serviceUnit"))
+			{
+				Dictionary<string, string?> attributes = new();
+				// TODO: error handling for add
+				foreach (XElement attributeElement in unitElement.Descendants())
+					attributes.Add(attributeElement.Name.LocalName, attributeElement.Value);
+				attributes.Add("addressOverride", null);
+				SharedAttributeKeys = attributes.Keys.ToArray();
+				yield return new UnitInformationEntry(attributes, UnitInformationEntry.MissingCoordinates);
+			}
+		}
+
+		/// <summary>Writes entries to the backing stream constructed by the builder.</summary>
 		/// <param name="entries">Entries to be written.</param>
+		/// <exception cref="InvalidOperationException">If no entry is read before writing.</exception>
 		/// <exception cref="IOException"/>
 		public async Task WriteEntries(IAsyncEnumerator<UnitInformationEntry> entries)
 		{
 			SortedSet<UnitInformationEntry> sortedEntries = new();
 			while (await entries.MoveNextAsync()) sortedEntries.Add(entries.Current);
+			string[]? attributeKeys = SharedAttributeKeys;
+			if (attributeKeys == null)
+				throw new InvalidOperationException(Resources.Exception.AttributeKeysNotInitialized);
 			using StreamWriter writer = new(_builder(FileMode.OpenOrCreate), new UTF8Encoding(false));
 			await writer.WriteAsync(Resources.UnitInformation.VariableDefinitionPreamble("longlat"));
 			await writer.WriteLineAsync(JsonSerializer.Serialize(sortedEntries.Select(
 					entry => new float[] { entry.Coordinates.X, entry.Coordinates.Y })) + ';');
 			await writer.WriteAsync(Resources.UnitInformation.VariableDefinitionPreamble("unitinfo"));
-			string[] attributeKeys = UnitInformationEntry.SharedAttributeKeys!;
 			IEnumerable<IEnumerable<string?>> compiledAttributes = sortedEntries
 					.Select(entry => attributeKeys.Select(key => entry[key]));
 			await writer.WriteAsync(JsonSerializer.Serialize(compiledAttributes.Prepend(attributeKeys)));
